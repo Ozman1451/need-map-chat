@@ -1,11 +1,50 @@
-"""Step 1: clean comments (stub; Phase 2)."""
-from _cli import parser
+"""Step 1: clean comments → data/processed/<ds>/{comments,posts}.parquet.
+
+Drops empty / emoji-only / URL-only comments, normalises whitespace (emojis kept) and removes
+exact duplicates only within the same post — repeats across posts carry need frequency.
+"""
+import re
+
+import pandas as pd
+
+from _cli import parser, processed_dir, raw_dir
+
+URL = re.compile(r"(https?://\S+|www\.\S+)", re.I)
+WS = re.compile(r"\s+")
+
+
+def normalize(text) -> str:
+    return WS.sub(" ", str(text or "")).strip()
+
+
+def has_content(text: str) -> bool:
+    """True if anything alphanumeric (any script) remains once URLs are removed."""
+    return any(ch.isalnum() for ch in URL.sub(" ", text))
+
+
+def clean_comments(comments: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    df = comments.copy()
+    df["text"] = df["text"].map(normalize)
+    keep = df["text"].map(has_content)
+    df = df[keep]
+    dup = df.duplicated(["post_id", "text"])
+    df = df[~dup].reset_index(drop=True)
+    if "true_need" not in df:
+        df["true_need"] = None
+    stats = {"input": len(comments), "dropped_no_content": int((~keep).sum()),
+             "dropped_dup_within_post": int(dup.sum()), "output": len(df)}
+    return df, stats
 
 
 def main() -> None:
-    p = parser("Step 1: clean comments")
-    args = p.parse_args()
-    print(f"clean [{args.dataset}]: not implemented yet (Phase 2)")
+    args = parser("Step 1: clean comments").parse_args()
+    src, dst = raw_dir(args.dataset), processed_dir(args.dataset)
+    posts = pd.read_parquet(src / "posts.parquet")
+    comments, stats = clean_comments(pd.read_parquet(src / "comments.parquet"))
+    comments = comments[comments["post_id"].isin(posts["post_id"])]
+    comments.to_parquet(dst / "comments.parquet", index=False)
+    posts.to_parquet(dst / "posts.parquet", index=False)
+    print(f"clean [{args.dataset}]: {stats}")
 
 
 if __name__ == "__main__":

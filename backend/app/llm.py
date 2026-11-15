@@ -86,15 +86,26 @@ def _cached_json(dataset: str, kind: str, model: str, prompt: str, payload: Any,
     return out
 
 
+class DailyQuotaExceeded(RuntimeError):
+    """A 429 naming a per-day quota: retrying today is pointless."""
+
+
+def is_daily_quota(exc: BaseException) -> bool:
+    return getattr(exc, "code", None) == 429 and "PerDay" in str(exc)
+
+
 def _retryable(exc: BaseException) -> bool:
     from google.genai import errors
+    if is_daily_quota(exc):
+        return False
     return isinstance(exc, errors.APIError) and (exc.code == 429 or (exc.code or 0) >= 500)
 
 
 def _warn_retry(state) -> None:
     exc = state.outcome.exception()
-    log.warning("Gemini %s (attempt %d) — backing off %.0fs", getattr(exc, "code", type(exc).__name__),
-                state.attempt_number, state.next_action.sleep if state.next_action else 0)
+    log.warning("Gemini %s (attempt %d) — backing off %.0fs: %s", getattr(exc, "code", type(exc).__name__),
+                state.attempt_number, state.next_action.sleep if state.next_action else 0,
+                " ".join(str(getattr(exc, "message", exc)).split())[:300])
 
 
 _retry = retry(retry=retry_if_exception(_retryable), wait=wait_exponential_jitter(initial=10, max=90),
@@ -102,27 +113,36 @@ _retry = retry(retry=retry_if_exception(_retryable), wait=wait_exponential_jitte
 
 
 class RateGate:
-    """Per-model client-side limiter: ≤rpm requests per sliding 60 s window, one request in flight.
-    Only real network calls pass through it (cache hits return before reaching the SDK)."""
+    """Per-model client-side limiter over a sliding 60 s window: ≤rpm request units and (optionally)
+    ≤tpm estimated input tokens, one request in flight. A batch embed costs one unit per text (that is
+    how the free tier counts it). Only real network calls pass through (cache hits return earlier)."""
 
-    def __init__(self, rpm: int, clock=time.monotonic, sleep=time.sleep):
-        self.rpm, self.clock, self.sleep = max(1, rpm), clock, sleep
-        self.sent: deque[float] = deque()
+    def __init__(self, rpm: int, tpm: int | None = None, clock=time.monotonic, sleep=time.sleep):
+        self.rpm, self.tpm, self.clock, self.sleep = max(1, rpm), tpm, clock, sleep
+        self.sent: deque[tuple[float, int, int]] = deque()
         self.lock = threading.Lock()
 
+    def _fits(self, units: int, tokens: int) -> bool:
+        if not self.sent:
+            return True
+        if sum(u for _, u, _ in self.sent) + units > self.rpm:
+            return False
+        return self.tpm is None or sum(t for _, _, t in self.sent) + tokens <= self.tpm
+
     @contextmanager
-    def slot(self):
+    def slot(self, tokens: int = 0, units: int = 1):
         with self.lock:  # held for the whole request → concurrency 1
             while True:
                 now = self.clock()
-                while self.sent and now - self.sent[0] >= 60:
+                while self.sent and now - self.sent[0][0] >= 60:
                     self.sent.popleft()
-                if len(self.sent) < self.rpm:
+                if self._fits(units, tokens):
                     break
-                wait = 60 - (now - self.sent[0]) + 0.05
-                log.info("rate limit %d/min reached — waiting %.1fs", self.rpm, wait)
+                wait = 60 - (now - self.sent[0][0]) + 0.05
+                log.info("rate limit (%d req, %d tok)/min reached — waiting %.1fs",
+                         self.rpm, self.tpm or 0, wait)
                 self.sleep(wait)
-            self.sent.append(self.clock())
+            self.sent.append((self.clock(), units, tokens))
             yield
 
 
@@ -133,24 +153,81 @@ _gates_lock = threading.Lock()
 def gate(model: str) -> RateGate:
     with _gates_lock:
         if model not in _gates:
-            _gates[model] = RateGate(settings.gemini_rpm)
+            embed = model == settings.gemini_embed_model
+            _gates[model] = (RateGate(settings.gemini_embed_rpm, settings.gemini_embed_tpm) if embed
+                             else RateGate(settings.gemini_rpm))
         return _gates[model]
 
 
-def _sdk_generate(model: str, prompt: str, schema: type[BaseModel], temperature: float | None) -> dict:
-    from google.genai import types
-    cfg = types.GenerateContentConfig(response_mime_type="application/json",
-                                      response_schema=schema, temperature=temperature)
+def estimate_tokens(texts: list[str]) -> int:
+    """Conservative input-token estimate (no API call): ~3 UTF-8 bytes/token, +2 per text."""
+    return sum(len(t.encode("utf-8")) // 3 + 2 for t in texts)
+
+
+_NO_JSON_MODE: set[str] = set()  # models that rejected response_schema (400) during this run
+
+
+def json_mode_supported(model: str) -> bool:
+    """Gemma on the Gemini API documents no JSON mode / response_schema → prompt for JSON instead."""
+    return not model.startswith("gemma") and model not in _NO_JSON_MODE
+
+
+def parse_json(text: str, schema: type[BaseModel]) -> dict:
+    """Lenient parse of a model's JSON reply (code fences, leading prose, bare list for a
+    one-field object schema) → validated dict. Raises ValueError / ValidationError."""
+    t = re.sub(r"^\s*```(?:json)?|```\s*$", "", text or "").strip()
+    starts = [i for i in (t.find("{"), t.find("[")) if i >= 0]
+    if not starts:
+        raise ValueError("no JSON in model reply")
+    obj, _ = json.JSONDecoder().raw_decode(t[min(starts):])
+    fields = list(schema.model_fields)
+    if isinstance(obj, list) and len(fields) == 1:
+        obj = {fields[0]: obj}
+    return schema.model_validate(obj).model_dump()
+
+
+def _call(model: str, prompt: str, cfg):
     with gate(model).slot():
-        resp = _client().models.generate_content(model=model, contents=prompt, config=cfg)
-    parsed = resp.parsed if isinstance(resp.parsed, schema) else schema.model_validate_json(resp.text)
-    return parsed.model_dump()
+        return _client().models.generate_content(model=model, contents=prompt, config=cfg)
+
+
+def _sdk_generate(model: str, prompt: str, schema: type[BaseModel], temperature: float | None) -> dict:
+    from google.genai import errors, types
+    if json_mode_supported(model):
+        cfg = types.GenerateContentConfig(response_mime_type="application/json",
+                                          response_schema=schema, temperature=temperature)
+        try:
+            resp = _call(model, prompt, cfg)
+            parsed = resp.parsed if isinstance(resp.parsed, schema) else schema.model_validate_json(resp.text)
+            return parsed.model_dump()
+        except errors.ClientError as exc:
+            if exc.code != 400:
+                raise
+            log.warning("%s rejected structured output (400) — falling back to JSON-in-prompt", model)
+            _NO_JSON_MODE.add(model)
+    return _prompt_json(model, prompt, schema, temperature)
+
+
+def _prompt_json(model: str, prompt: str, schema: type[BaseModel], temperature: float | None) -> dict:
+    """No JSON mode: ask for JSON in the prompt, validate with pydantic, retry once on invalid JSON."""
+    from google.genai import types
+    full = (prompt + "\n\nReply with ONLY valid JSON (no prose, no code fences) matching this JSON Schema:\n"
+            + json.dumps(schema.model_json_schema(), ensure_ascii=False))
+    cfg = types.GenerateContentConfig(temperature=temperature)
+    for attempt in (1, 2):
+        text = _call(model, full, cfg).text
+        try:
+            return parse_json(text, schema)
+        except ValueError as exc:  # pydantic ValidationError is a ValueError
+            if attempt == 2:
+                raise RuntimeError(f"{model} returned invalid JSON twice: {str(exc)[:200]}") from exc
+            log.warning("%s returned invalid JSON — retrying once", model)
 
 
 def _sdk_embed(model: str, texts: list[str], task_type: str, dim: int) -> list[list[float]]:
     from google.genai import types
     cfg = types.EmbedContentConfig(task_type=task_type, output_dimensionality=dim)
-    with gate(model).slot():
+    with gate(model).slot(estimate_tokens(texts), units=len(texts)):
         resp = _client().models.embed_content(model=model, contents=texts, config=cfg)
     return [e.values for e in resp.embeddings]
 
@@ -340,13 +417,18 @@ def _mock_tags(chunk: list[dict]) -> list[dict]:
 
 
 # ---------------------------------------------------------------- embeddings (pipeline step 3)
+def mock_vectors(texts: list[str], dim: int) -> np.ndarray:
+    """Deterministic hash-seeded random vectors (MOCK_LLM, both embedding backends)."""
+    return np.stack([np.random.default_rng(int(hashlib.sha1(t.encode()).hexdigest()[:15], 16))
+                     .standard_normal(dim) for t in texts]).astype(np.float32)
+
+
 def embed(texts: list[str], *, dataset: str, task_type: str = "CLUSTERING", dim: int = 768) -> np.ndarray:
     """→ float32 array (len(texts), dim), L2-normalised. Cached per chunk of 100 as .npy."""
     if not texts:
         return np.zeros((0, dim), dtype=np.float32)
     if is_mock():
-        vecs = np.stack([np.random.default_rng(int(hashlib.sha1(t.encode()).hexdigest()[:15], 16))
-                         .standard_normal(dim) for t in texts])
+        vecs = mock_vectors(texts, dim)
     else:
         model = model_name("embed")
         parts = []
@@ -356,7 +438,12 @@ def embed(texts: list[str], *, dataset: str, task_type: str = "CLUSTERING", dim:
             if path.exists():
                 parts.append(np.load(path))
                 continue
-            arr = np.asarray(_embed_raw(model, chunk, task_type, dim), dtype=np.float32)
+            try:
+                arr = np.asarray(_embed_raw(model, chunk, task_type, dim), dtype=np.float32)
+            except Exception as exc:
+                if is_daily_quota(exc):
+                    raise DailyQuotaExceeded(str(exc)[:300]) from exc
+                raise
             _atomic_write(path, lambda p: np.save(open(p, "wb"), arr))
             parts.append(arr)
         vecs = np.concatenate(parts)
@@ -364,28 +451,73 @@ def embed(texts: list[str], *, dataset: str, task_type: str = "CLUSTERING", dim:
     return vecs / np.clip(np.linalg.norm(vecs, axis=1, keepdims=True), 1e-12, None)
 
 
+def embed_pending(texts: list[str], *, dataset: str, task_type: str = "CLUSTERING", dim: int = 768) -> int:
+    """How many of `texts` still need a network call (chunks not in the disk cache)."""
+    if is_mock():
+        return 0
+    model = model_name("embed")
+    return sum(len(texts[i:i + EMBED_BATCH]) for i in range(0, len(texts), EMBED_BATCH)
+               if not _cache_path(dataset, "embed", cache_key(model, task_type, {"texts": texts[i:i + EMBED_BATCH],
+                                                                             "dim": dim}), "npy").exists())
+
+
 # ---------------------------------------------------------------- cluster naming (pipeline step 5)
-class ClusterName(BaseModel):
+NAME_BATCH = 15
+
+
+class NamedCluster(BaseModel):
+    cluster_id: str
     name: str = Field(description="≤4 words")
     description: str = Field(description="one sentence")
     action: str = Field(description="one imperative sentence for the marketing team")
 
 
-NAME_PROMPT = """You name one cluster of Instagram comments on Pakistani lawn/clothing-brand posts for a marketer.
-Use only the facts given (top terms, example comments, stats); do not invent numbers.
-Return JSON {"name": "≤4 words", "description": "one sentence", "action": "one imperative sentence"}.
+class ClusterNames(BaseModel):
+    clusters: list[NamedCluster]
 
-Cluster data (JSON):
+
+NAME_PROMPT = """You name clusters of Instagram comments on Pakistani lawn/clothing-brand posts for a marketer.
+For EACH cluster below use only its facts (top terms, example comments, stats); do not invent numbers.
+Make names distinct from each other. A cluster with "parent_cluster_name" is a sub-group of that parent: \
+name what makes it different from its siblings.
+Return one entry per cluster, same cluster_id: \
+JSON {"clusters": [{"cluster_id": "...", "name": "≤4 words", "description": "one sentence", \
+"action": "one imperative sentence"}]}.
+
+Clusters (JSON):
 """
 
 
-def name_cluster(payload: dict, *, dataset: str) -> dict:
+def name_clusters(payloads: list[dict], *, dataset: str) -> dict[str, dict]:
+    """payloads: [{cluster_id, top_terms, examples, stats...}] → {cluster_id: {name, description, action}}.
+    Up to NAME_BATCH clusters per Gemini call; cached per batch."""
+    out: dict[str, dict] = {}
+    for i in range(0, len(payloads), NAME_BATCH):
+        out.update(_name_chunk(payloads[i:i + NAME_BATCH], dataset))
+    return out
+
+
+def _name_chunk(chunk: list[dict], dataset: str, retry_missing: bool = True) -> dict[str, dict]:
     if is_mock():
-        terms = [str(t) for t in payload.get("top_terms", [])][:3] or ["misc"]
-        return {"name": " ".join(terms).title()[:40], "description": f"Comments about {', '.join(terms)}.",
-                "action": f"Address {terms[0]} questions in captions and replies."}
-    prompt = NAME_PROMPT + json.dumps(payload, ensure_ascii=False, sort_keys=True)
-    return generate_json(prompt, ClusterName, dataset=dataset, kind="name", payload=payload, temperature=0.2)
+        return {p["cluster_id"]: _mock_name(p) for p in chunk}
+    prompt = NAME_PROMPT + json.dumps(chunk, ensure_ascii=False, sort_keys=True)
+    res = generate_json(prompt, ClusterNames, dataset=dataset, kind="name", payload=chunk, temperature=0.2)
+    want = {p["cluster_id"] for p in chunk}
+    got = {c["cluster_id"]: {k: c[k] for k in ("name", "description", "action")}
+           for c in res["clusters"] if c["cluster_id"] in want}
+    missing = [p for p in chunk if p["cluster_id"] not in got]
+    if missing and retry_missing and len(missing) < len(chunk):
+        got.update(_name_chunk(missing, dataset, retry_missing=False))
+    missing = want - set(got)
+    if missing:
+        raise RuntimeError(f"naming returned nothing for {sorted(missing)}")
+    return got
+
+
+def _mock_name(p: dict) -> dict:
+    terms = [str(t) for t in p.get("top_terms", [])][:3] or ["misc"]
+    return {"name": " ".join(terms).title()[:40], "description": f"Comments about {', '.join(terms)}.",
+            "action": f"Address {terms[0]} questions in captions and replies."}
 
 
 # ---------------------------------------------------------------- live chat (agent, Phase 3)

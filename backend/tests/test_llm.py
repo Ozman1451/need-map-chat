@@ -111,8 +111,8 @@ def test_mock_embed_normalised_and_deterministic():
 
 
 def test_mock_name_and_chat():
-    n = llm.name_cluster({"top_terms": ["price", "plz"]}, dataset="t")
-    assert set(n) == {"name", "description", "action"}
+    n = llm.name_clusters([{"cluster_id": "C1", "top_terms": ["price", "plz"]}], dataset="t")
+    assert set(n) == {"C1"} and set(n["C1"]) == {"name", "description", "action"}
     tools = [{"name": "get_overview", "description": "d", "parameters": {"type": "object", "properties": {}}}]
     r1 = llm.chat([{"role": "user", "parts": [{"text": "hi"}]}], tools, "sys")
     assert r1["function_calls"][0]["name"] == "get_overview"
@@ -124,3 +124,93 @@ def test_missing_model_name_raises(live, monkeypatch):
     monkeypatch.setattr(llm.settings, "gemini_chat_model", "")
     with pytest.raises(RuntimeError, match="GEMINI_CHAT_MODEL"):
         llm.model_name("chat")
+
+
+def test_rate_gate_throttles_tokens_per_minute():
+    now = [0.0]
+    sleeps = []
+
+    def sleep(s):
+        sleeps.append(s)
+        now[0] += s
+
+    g = llm.RateGate(100, tpm=1000, clock=lambda: now[0], sleep=sleep)
+    for _ in range(3):
+        with g.slot(600):
+            now[0] += 1
+    assert len(sleeps) == 2 and all(55 < s < 61 for s in sleeps)
+
+
+def test_rate_gate_counts_batch_texts_as_units():
+    now = [0.0]
+    sleeps = []
+
+    def sleep(s):
+        sleeps.append(s)
+        now[0] += s
+
+    g = llm.RateGate(100, clock=lambda: now[0], sleep=sleep)
+    for _ in range(2):
+        with g.slot(units=100):  # a full 100-text embed batch uses the whole minute
+            now[0] += 1
+    assert len(sleeps) == 1 and 57 < sleeps[0] < 61
+
+
+def test_parse_json_lenient():
+    class Names(llm.BaseModel):
+        clusters: list[llm.NamedCluster]
+    item = {"cluster_id": "C1", "name": "Price", "description": "d.", "action": "Do it."}
+    import json as _j
+    assert llm.parse_json("```json\n" + _j.dumps({"clusters": [item]}) + "\n```", Names)["clusters"][0]["name"] == "Price"
+    assert llm.parse_json("Sure! " + _j.dumps([item]) + " hope this helps", Names)["clusters"][0]["cluster_id"] == "C1"
+    with pytest.raises(ValueError):
+        llm.parse_json("no json here", Names)
+
+
+def test_gemma_uses_prompt_json_and_retries_once(monkeypatch):
+    replies = iter(["not json", '{"clusters": [{"cluster_id": "C1", "name": "n", "description": "d", "action": "a"}]}'])
+    prompts = []
+
+    class R:
+        def __init__(self, t):
+            self.text = t
+    monkeypatch.setattr(llm, "_call", lambda model, prompt, cfg: prompts.append((prompt, cfg)) or R(next(replies)))
+    out = llm._sdk_generate("gemma-4-31b", "name these", llm.ClusterNames, 0.2)
+    assert out["clusters"][0]["name"] == "n" and len(prompts) == 2
+    assert "JSON Schema" in prompts[0][0] and prompts[0][1].response_schema is None
+    replies2 = iter(["bad", "still bad"])
+    monkeypatch.setattr(llm, "_call", lambda *a: R(next(replies2)))
+    with pytest.raises(RuntimeError, match="invalid JSON twice"):
+        llm._sdk_generate("gemma-4-31b", "p", llm.ClusterNames, None)
+
+
+def test_structured_400_falls_back_to_prompt_json(monkeypatch):
+    calls = []
+
+    class R:
+        text = '{"clusters": []}'
+        parsed = None
+
+    def call(model, prompt, cfg):
+        calls.append(cfg.response_schema)
+        if cfg.response_schema is not None:
+            raise _api_error(400)
+        return R()
+    monkeypatch.setattr(llm, "_call", call)
+    monkeypatch.setattr(llm, "_NO_JSON_MODE", set())
+    assert llm._sdk_generate("some-model", "p", llm.ClusterNames, None) == {"clusters": []}
+    assert calls[0] is not None and calls[1] is None and not llm.json_mode_supported("some-model")
+
+
+def test_name_clusters_batches_of_15_and_retries_missing(live, monkeypatch):
+    sizes = []
+
+    def fake(prompt, schema, **kw):
+        chunk = kw["payload"]
+        sizes.append(len(chunk))
+        keep = chunk if len(chunk) < 15 else chunk[1:]  # first batch "forgets" one cluster
+        return {"clusters": [{"cluster_id": p["cluster_id"], "name": "n", "description": "d", "action": "a"}
+                             for p in keep]}
+    monkeypatch.setattr(llm, "generate_json", fake)
+    out = llm.name_clusters([{"cluster_id": f"C{i}"} for i in range(20)], dataset="t")
+    assert sizes == [15, 1, 5] and set(out) == {f"C{i}" for i in range(20)}

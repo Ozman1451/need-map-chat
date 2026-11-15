@@ -18,7 +18,7 @@ Phase 1: read the current google-genai Python SDK docs (structured output, embed
 
 ## Phase 2 — Pipeline (≈1.5–2 h)
 ```
-Phase 2: implement SPEC §5 steps 1–7 as pure functions + thin CLIs, working when true_need is null. Run make pipeline on synthetic. Print one compact table: algo, chosen k, silhouette, DB, stability ARI, ARI vs true_need; then raw-vs-gloss result, cluster names + actions, drill-down children of the largest cluster, and 5 DBSCAN noise comments. Tests on data/sample. Stop after make verify passes.
+Phase 2: implement SPEC §5 steps 1–7 as pure functions + thin CLIs, working when true_need is null. Embeddings are local (sentence-transformers multilingual-e5-base, CPU; EMBED_BACKEND=gemini optional). Run make pipeline on synthetic. Print one compact table: algo, chosen k, silhouette, DB, stability ARI, ARI vs true_need; then raw-vs-gloss result, cluster names + actions, drill-down children of the largest cluster, and 5 DBSCAN noise comments. Tests on data/sample. Stop after make verify passes.
 ```
 
 ## Phase 3 — Tools + agent + SSE (≈1.5 h)
@@ -38,10 +38,10 @@ Phase 5a: implement scrape_apify.py, map_apify.py, import_csv.py per SPEC §4.3 
 
 ## Phase 5b — Real run (spends Apify credit; only after I confirm)
 ```
-Phase 5b: APIFY_TOKEN is in .env (don't read it) and I checked targets.yaml. Run make scrape-dry, show mapped rows + cost, then WAIT for my OK. Then make scrape and make pipeline DATASET=real. Show counts per brand, language mix, the metrics table, cluster names + actions, 5 noise comments, and anything broken vs synthetic. Fix real-data issues (nulls, tiny clusters, few comments per campaign). Then make dev DATASET=real and take 1 screenshot.
+Phase 5b: APIFY_TOKEN is in .env (don't read it) and I checked targets.yaml. Run make scrape-dry, show mapped rows + cost, then WAIT for my OK. Then make scrape and make pipeline DATASET=real (embeddings run locally — no embedding quota; Gemini is only used for tagging, naming and caption inference). Show counts per brand, language mix, the metrics table, cluster names + actions, 5 noise comments, and anything broken vs synthetic. Fix real-data issues (nulls, tiny clusters, few comments per campaign). Then make dev DATASET=real and take 1 screenshot.
 ```
 
 ## Phase 6 — Polish + README (≈1 h)
 ```
-Phase 6: loading skeletons, error toasts, empty states, and a "Demo" button that sends the 5 prompt chips one by one with pauses (for screen recording). Default to the real dataset when artifacts/real exists. Write README.md per SPEC §9 (metrics from artifacts/real/metrics.json and artifacts/synthetic/metrics.json side by side). Run make verify.
+Phase 6: loading skeletons, error toasts, empty states, and a "Demo" button that sends the 5 prompt chips one by one with pauses (for screen recording). Default to the real dataset when artifacts/real exists. Write README.md per SPEC §9 (metrics from artifacts/real/metrics.json and artifacts/synthetic/metrics.json side by side; setup notes for the CPU torch index and the local multilingual-e5-base embedder). Run make verify.
 ```

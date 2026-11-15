@@ -8,6 +8,7 @@ DATASET ?= synthetic
 .PHONY: setup seed scrape-dry scrape pipeline dev test verify
 
 setup:
+	pip install torch --index-url https://download.pytorch.org/whl/cpu
 	pip install -e "backend[dev]"
 	cd frontend && npm install
 
@@ -34,4 +35,4 @@ test:
 	cd frontend && npm run lint && npm run build
 
 verify: test
-	python pipeline/run_all.py --dataset sample
+	MOCK_LLM=1 python pipeline/run_all.py --dataset sample

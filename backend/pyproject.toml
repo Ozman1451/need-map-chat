@@ -20,6 +20,7 @@ dependencies = [
   "tenacity",
   "apify-client",
   "pyyaml",
+  "sentence-transformers",  # needs torch; install the CPU build first (see Makefile setup)
 ]
 
 [project.optional-dependencies]
