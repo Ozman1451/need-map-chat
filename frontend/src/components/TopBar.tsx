@@ -1,6 +1,7 @@
 "use client";
 
-import { Database, FlaskConical } from "lucide-react";
+import { Database, FlaskConical, Play, Square } from "lucide-react";
+import { Skeleton } from "@/components/Skeleton";
 import { cn } from "@/lib/utils";
 import type { Filters, Manifest } from "@/lib/types";
 
@@ -16,11 +17,15 @@ export function TopBar({
   filters,
   onFilters,
   onDataset,
+  demo,
+  onDemo,
 }: {
   manifest: Manifest | null;
   filters: Filters;
   onFilters: (f: Filters) => void;
   onDataset: (name: string) => void;
+  demo: boolean;
+  onDemo: () => void;
 }) {
   const brands = manifest?.options.brand ?? [];
   const campaigns = manifest?.options.campaign ?? [];
@@ -37,7 +42,9 @@ export function TopBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-1">
-        {[null, ...brands].map((b) => (
+        {!manifest &&
+          [14, 20, 18, 24, 16].map((w, i) => <Skeleton key={i} className="h-6 rounded-full" style={{ width: `${w * 4}px` }} />)}
+        {manifest && [null, ...brands].map((b) => (
           <button
             key={b ?? "all"}
             type="button"
@@ -86,10 +93,27 @@ export function TopBar({
         ))}
       </div>
 
-      <div className="ml-auto flex rounded-lg border border-border bg-card p-0.5 text-xs">
+      <button
+        type="button"
+        onClick={onDemo}
+        disabled={!manifest}
+        data-testid="demo-button"
+        title={demo ? "Stop the demo" : "Send the five prompt chips one by one"}
+        className={cn(
+          "ml-auto flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition disabled:opacity-40",
+          demo
+            ? "border-[#E94BA8]/50 bg-[#E94BA8]/15 text-foreground"
+            : "border-border bg-card text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {demo ? <Square className="size-3.5" /> : <Play className="size-3.5" />}
+        {demo ? "Stop demo" : "Demo"}
+      </button>
+
+      <div className="flex rounded-lg border border-border bg-card p-0.5 text-xs">
         {[
           { id: "real", label: "Real", Icon: Database },
-          { id: "synthetic", label: "Synthetic", Icon: FlaskConical },
+          { id: "synthetic", label: "Benchmark", Icon: FlaskConical },
         ].map(({ id, label, Icon }) => {
           const info = datasets[id];
           const active = manifest?.dataset === id;

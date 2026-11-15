@@ -34,9 +34,14 @@ class Store:
                 out[d.name] = {**m.get("counts", {}), "is_synthetic": m.get("is_synthetic")}
         return out
 
-    def load(self, dataset: str | None = None, root: Path | None = None) -> None:
-        dataset = dataset or settings.dataset
+    def default_dataset(self, root: Path | None = None) -> str:
+        """Configured DATASET, else real when its artifacts are complete, else synthetic."""
         root = Path(root) if root else self.root
+        return settings.dataset or ("real" if all((root / "real" / f).exists() for f in FILES) else "synthetic")
+
+    def load(self, dataset: str | None = None, root: Path | None = None) -> None:
+        root = Path(root) if root else self.root
+        dataset = dataset or self.default_dataset(root)
         a = root / dataset
         missing = [f for f in FILES if not (a / f).exists()]
         if missing:

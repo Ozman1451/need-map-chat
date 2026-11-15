@@ -26,6 +26,7 @@ const SENT: Record<string, string> = { pos: "#7BE495", neg: "#FF7A59", neu: C.mu
 
 export function CommentCards({ chart, onAsk }: { chart: ChartSpec; onAsk: Ask }) {
   const cards: Card[] = chart.data.cards ?? [];
+  if (!cards.length) return <p className="py-6 text-center text-sm text-muted-foreground">No comments here.</p>;
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {cards.map((c) => (

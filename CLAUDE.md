@@ -3,7 +3,7 @@
 Read this first in every session. Full spec: @docs/SPEC.md. Build order: @docs/BUILD_PLAN.md.
 
 ## What this is
-A chat-first web app for a university Big Data course (clustering module). A marketer asks "What does my audience want?" in chat; a Gemini agent calls Python clustering tools over Pakistani lawn-suit brand Instagram comments (Sapphire, Khaadi, Gul Ahmed) and the UI renders the returned charts on a live canvas. Scope is deliberately small: **comment need clustering only** (no personas, no post anomalies, no reports).
+A chat-first web app for a university Big Data course (clustering module). A marketer asks "What does my audience want?" in chat; a Gemini agent calls Python clustering tools over Instagram comments on 7 Pakistani fashion brands (Sapphire, Khaadi, Nishat Linen, Gul Ahmed, Agha Noor, Sana Safinaz, J.; Winter '26 + recent posts) and the UI renders the returned charts on a live canvas. Scope is deliberately small: **comment need clustering only** (no personas, no post anomalies, no reports).
 
 ## Golden rule
 **The LLM never computes numbers.** Every number shown comes from a Python tool over cached data. Gemini only (a) writes the synthetic comments, (b) tags/glosses comments offline, (c) names clusters offline, (d) infers content_type/campaign for real posts, (e) routes chat to tools and explains tool output live. Embeddings are computed locally (sentence-transformers), not by Gemini.

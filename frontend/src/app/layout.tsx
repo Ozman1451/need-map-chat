@@ -7,7 +7,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: "Need Map",
-  description: "What does my audience want? Comment need clustering for lawn brands.",
+  description: "What does my audience want? Comment need clustering for Pakistani fashion brands.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

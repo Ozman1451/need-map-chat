@@ -20,11 +20,13 @@ export function Chat({
   busy,
   onAsk,
   onStop,
+  onTyping,
 }: {
   messages: ChatMessage[];
   busy: boolean;
   onAsk: Ask;
   onStop: () => void;
+  onTyping?: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const end = useRef<HTMLDivElement>(null);
@@ -84,7 +86,10 @@ export function Chat({
         <div className="flex items-end gap-2 rounded-xl border border-border bg-card px-3 py-2 focus-within:border-[#E94BA8]/50 focus-within:shadow-[0_0_0_3px_rgba(233,75,168,0.12)]">
           <textarea
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              onTyping?.();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();

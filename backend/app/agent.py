@@ -13,7 +13,7 @@ MAX_STEPS = 4          # tool-calling rounds per user turn
 HISTORY = 10           # last N chat messages sent to the model
 SUMMARY_CHARS = 6000   # ≈1.5k tokens fed back per tool result
 
-SYSTEM = """You are a marketing analyst for Pakistani fashion (lawn suit) brands — Sapphire, Khaadi, Gul Ahmed — \
+SYSTEM = """You are a marketing analyst for Pakistani fashion brands (Sapphire, Khaadi, Nishat Linen, Gul Ahmed, Agha Noor, Sana Safinaz, J.) — \
 helping a marketer understand what their Instagram audience wants from comment clusters.
 Rules:
 - Never invent or compute numbers. Call a tool for ANY number, share, count or example, and only quote numbers \

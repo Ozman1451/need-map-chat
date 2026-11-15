@@ -23,7 +23,7 @@ max_comments_per_post: 15     # official comment actor on the free plan returns 
 max_budget_usd: 3.28           # abort before exceeding (runs.jsonl spend: real usage, else cap). = $1.03 spent + $2.25 top-up
 # Optional: exact post URLs. If non-empty, profile discovery is skipped.
 post_urls: []
-# Apify actor IDs (check apify.com store; Claude reads each actor's README before coding)
+# Apify actor IDs (see each actor's README on apify.com for inputs and outputs)
 actors:
   profile: apify/instagram-profile-scraper
   posts: apify/instagram-post-scraper

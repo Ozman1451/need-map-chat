@@ -1,8 +1,8 @@
 # SPEC — Need Map Chat
-*"What does my audience want?" — comment need clustering for Pakistani lawn-suit brands*
+*"What does my audience want?" — comment need clustering for Pakistani fashion brands (Winter '26 and recent posts)*
 
 ## 1. Product in one paragraph
-A Lahore lawn brand gets thousands of Instagram comments ("Price please?", "Karachi delivery?", "Price bohat zyada hai", "Inbox kar dein"). The marketer **chats** with an agent that clusters those comments into audience needs, splits big needs into sub-needs, surfaces unusual comments, compares clustering algorithms, and attaches one recommended action per need. Chat on the left; a **live canvas** on the right fills with charts as the agent calls tools.
+A Pakistani fashion brand (Sapphire, Khaadi, Nishat Linen, Gul Ahmed, Agha Noor, Sana Safinaz, J.) gets thousands of Instagram comments ("Price please?", "Karachi delivery?", "Price bohat zyada hai", "Inbox kar dein"). The marketer **chats** with an agent that clusters those comments into audience needs, splits big needs into sub-needs, surfaces unusual comments, compares clustering algorithms, and attaches one recommended action per need. Chat on the left; a **live canvas** on the right fills with charts as the agent calls tools.
 
 ## 2. What the app answers
 | Question | Tool | Method |
@@ -36,7 +36,7 @@ Gemini is used only for: synthetic comment generation, tagging/gloss, cluster na
 - **comment_clusters**: `comment_id, x, y (UMAP 2D), kmeans, ward, dbscan, gmm, gmm_prob, primary, sub (drill-down label or null), centroid_dist, unusual (bool), unusual_score (0–4), unusual_reasons (comma list of dbscan_noise|far_from_centroid|low_gmm_prob)`
 - **clusters** (json): `cluster_id ("C3", "C3.1"), algo, parent_id, name, description, action, size, share, top_terms, exemplar_ids, sentiment_mix, intent_mix, language_mix, top_cities, off_topic_share, derived_from (K-Means overlaps for derived names, else null)`
 
-### 4.2 Synthetic dataset (`make seed`) — for building and all tests
+### 4.2 Synthetic benchmark (`make seed`) — labelled ground-truth needs, for building, tests and ARI/NMI
 `pipeline/seed_synthetic.py`:
 - 3 brands, ~60 posts across campaigns/content types, **~2,500 comments**.
 - Gemini (`GEMINI_BATCH_MODEL`) writes comments in batches: input = post metadata + a hidden need from {price_inquiry, discount_request, delivery_time, availability_city, size_fit, fabric_quality, compliment, order_complaint, inbox_request, purchase_intent}; output = 25 realistic comments mixing English / Roman Urdu / Urdu script with typos and emojis. Hidden need stored as `true_need`.
@@ -44,7 +44,8 @@ Gemini is used only for: synthetic comment generation, tagging/gloss, cluster na
 - Also inject ~40 off-topic/odd comments (spam-like, other-language, questions about unrelated products) so DBSCAN has something unusual to find.
 - `data/sample/`: 200-comment fixture for tests (committed).
 
-### 4.3 Real dataset (`make scrape`) — final demo, built last
+### 4.3 Real dataset (`make scrape`) — the primary dataset
+Scope: 7 Pakistani fashion brands (Sapphire, Khaadi, Nishat Linen, Gul Ahmed, Agha Noor, Sana Safinaz, J.), Winter '26 collection and recent posts, scraped via Apify on 15 Nov 2026 (102 posts, 863 comments → 600 after cleaning).
 `pipeline/scrape_apify.py` + `map_apify.py`, configured by `config/targets.yaml`:
 - Step A: profile actor → brand followers (stored, informational). Step B: post actor on brand profiles → keep posts after `since` whose caption matches a keyword, cap per brand. Step C: comment actor on kept posts, cap per post.
 - Read each actor's README on apify.com and current apify-client docs before coding (exact inputs, outputs, per-run item cap).
@@ -109,7 +110,7 @@ Also: `GET /api/health`, `GET /api/manifest`, `POST /api/dataset {name}`, `POST 
 - Palette: bg `#0A0A0F`, surface `#12121A`, border `#23232F`, text `#EDEDF2`, muted `#8A8A9A`, accent gradient `#E94BA8 → #F5A524`; 12-color cluster palette readable on dark.
 - Font: Geist Sans; Geist Mono for numbers.
 - Single route `/`:
-  - **Top bar:** title "Need Map", brand chips (All / Sapphire / Khaadi / Gul Ahmed), campaign select, algorithm segmented control (K-Means / Ward / DBSCAN / GMM), Real/Synthetic toggle with counts.
+  - **Top bar:** title "Need Map", brand chips (All + every brand in the active dataset's manifest), campaign select, algorithm segmented control (K-Means / Ward / DBSCAN / GMM), Real/Synthetic toggle with counts.
   - **Left (~38%) chat:** streaming messages, tool-trace stepper ("Clustering comments… ✓"), clickable `[C3]` chips, empty state with 5 prompt chips: "What does my audience want?", "Split the biggest need further", "Show me the weird comments", "How do needs change in 12.12 vs Eid?", "Which clustering algorithm fits best?".
   - **Right (~62%) canvas:** stack of chart cards (newest on top, close/expand). The scatter is the hero: glowing points (ECharts scatter with blur/shadow), hover shows comment text, clicking a point or legend item sends "Tell me about [C3]". Sunburst animates on drill-down.
 - Motion: cards fade/slide in (framer-motion, 60ms stagger); tool steps tick to ✓.

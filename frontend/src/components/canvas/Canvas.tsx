@@ -1,12 +1,33 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Maximize2, Minimize2, Sparkles, X } from "lucide-react";
+import { FilterX, Maximize2, Minimize2, Play, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ChartSkeleton } from "@/components/Skeleton";
 import { ChartBody } from "./charts";
 import type { Ask, CanvasItem } from "@/lib/types";
 
-export function Canvas({ items, onClose, onAsk }: { items: CanvasItem[]; onClose: (id: string) => void; onAsk: Ask }) {
+export function Canvas({
+  items,
+  onClose,
+  onAsk,
+  loading = false,
+  noMatch = false,
+  datasetLine,
+  demo = false,
+  onDemo,
+  onClearFilters,
+}: {
+  items: CanvasItem[];
+  onClose: (id: string) => void;
+  onAsk: Ask;
+  loading?: boolean;
+  noMatch?: boolean;
+  datasetLine?: string | null;
+  demo?: boolean;
+  onDemo?: () => void;
+  onClearFilters?: () => void;
+}) {
   const [expanded, setExpanded] = useState<string | null>(null);
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setExpanded(null);
@@ -15,13 +36,45 @@ export function Canvas({ items, onClose, onAsk }: { items: CanvasItem[]; onClose
   }, []);
   const big = items.find((i) => i.chart.id === expanded);
 
+  const noMatchCard = noMatch && (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground" data-testid="no-match">
+      <span>No comments match this brand and campaign combination.</span>
+      {onClearFilters && (
+        <button type="button" onClick={onClearFilters} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-foreground hover:border-[#E94BA8]/50">
+          <FilterX className="size-3.5" /> Clear filters
+        </button>
+      )}
+    </div>
+  );
+
   if (!items.length) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-[0_0_40px_rgba(233,75,168,0.12)]">
-          <Sparkles className="size-6 text-[#E94BA8]" />
+    if (loading) {
+      return (
+        <div className="flex flex-col gap-4">
+          <ChartSkeleton tall />
+          <ChartSkeleton />
         </div>
-        <p className="text-sm">Charts from your questions appear here.</p>
+      );
+    }
+    return (
+      <div className="flex h-full flex-col gap-4">
+        {noMatchCard}
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted-foreground" data-testid="canvas-empty">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-[0_0_40px_rgba(233,75,168,0.12)]">
+            <Sparkles className="size-6 text-[#E94BA8]" />
+          </div>
+          <p className="text-sm">Charts from your questions appear here.</p>
+          {datasetLine && <p className="font-mono text-xs text-muted-foreground/80">{datasetLine}</p>}
+          {onDemo && !demo && (
+            <button
+              type="button"
+              onClick={onDemo}
+              className="mt-1 flex items-center gap-1.5 rounded-full border border-[#E94BA8]/40 bg-[#E94BA8]/10 px-3.5 py-1.5 text-xs text-foreground transition hover:shadow-[0_0_20px_-6px_rgba(233,75,168,0.6)]"
+            >
+              <Play className="size-3.5" /> Run demo
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -29,6 +82,8 @@ export function Canvas({ items, onClose, onAsk }: { items: CanvasItem[]; onClose
   return (
     <>
       <div className="flex flex-col gap-4" data-testid="canvas">
+        {noMatchCard}
+        {loading && <ChartSkeleton />}
         <AnimatePresence initial={false}>
           {items.map((it) => (
             <motion.section

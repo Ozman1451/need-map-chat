@@ -4,8 +4,10 @@ endif
 
 SHELL := /bin/bash
 DATASET ?= synthetic
+# `make dev` with no DATASET lets the backend pick: real when artifacts/real exists, else synthetic.
+DEV_DATASET := $(if $(filter command line environment,$(origin DATASET)),$(DATASET),)
 
-.PHONY: setup seed scrape-dry scrape pipeline dev test verify
+.PHONY: setup seed scrape-dry scrape pipeline dev test verify readme
 
 setup:
 	pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -26,7 +28,7 @@ pipeline:
 
 dev:
 	trap 'kill 0' EXIT; \
-	DATASET=$(DATASET) uvicorn app.main:app --reload --port 8000 --app-dir backend & \
+	DATASET=$(DEV_DATASET) uvicorn app.main:app --reload --port 8000 --app-dir backend & \
 	(cd frontend && npm run dev -- --port 3000) & \
 	wait
 
@@ -36,3 +38,6 @@ test:
 
 verify: test
 	MOCK_LLM=1 python pipeline/run_all.py --dataset sample
+
+readme:
+	python scripts/readme_tables.py

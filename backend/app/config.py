@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 
-    dataset: str = "synthetic"
+    dataset: str = ""  # empty → "real" when its artifacts exist, else "synthetic"
     gemini_chat_model: str = ""
     gemini_batch_model: str = ""
     gemini_embed_model: str = ""
