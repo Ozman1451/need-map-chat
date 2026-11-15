@@ -65,13 +65,20 @@ def brand_map(targets: dict) -> dict[str, str]:
     return {b["instagram"].lower(): b["name"] for b in targets["brands"]}
 
 
+def post_brand(item: dict, brands: dict[str, str]) -> str:
+    """Brand of the profile feed the post was scraped from (inputUrl) — collab posts are owned by the
+    influencer — else the owner."""
+    feed = (item.get("inputUrl") or "").rstrip("/").rsplit("/", 1)[-1].lower()
+    owner = (item.get("ownerUsername") or "").lower()
+    return brands.get(feed) or brands.get(owner) or item.get("ownerUsername") or "unknown"
+
+
 def map_posts(raw: dict, items: list[dict], brands: dict[str, str]) -> pd.DataFrame:
     rows = []
     for i in items:
         likes = i.get("likesCount")
         rows.append({
-            "post_id": i["shortCode"], "brand": brands.get((i.get("ownerUsername") or "").lower(),
-                                                           i.get("ownerUsername") or "unknown"),
+            "post_id": i["shortCode"], "brand": post_brand(i, brands),
             "url": i["url"], "posted_at": utc(i["timestamp"]),
             "collected_at": utc(raw["collected_at"]), "campaign": None,
             "content_type": media_content_type(i), "caption": i.get("caption") or "",
@@ -131,15 +138,23 @@ def build_tables(apify_dir: Path, targets: dict, *, dataset: str = "real") -> tu
     """Raw JSON → (posts, comments, brands). Only kept posts that have a comments file are mapped."""
     apify_dir = Path(apify_dir)
     brands = brand_map(targets)
-    info = []
-    if (apify_dir / "profiles.json").exists():
-        for p in read_raw(apify_dir / "profiles.json")["items"]:
+    info, seen = [], set()
+    for f in sorted(apify_dir.glob("profiles*.json")):  # profiles.json + top-up handle checks
+        for p in read_raw(f)["items"]:
             h = (p.get("username") or "").lower()
-            info.append({"brand": brands.get(h, h), "instagram": h, "followers": p.get("followersCount")})
-    raw_posts = read_raw(apify_dir / "posts.json")
-    kept = [i for i in filter_posts(raw_posts["items"], targets)
-            if (apify_dir / "comments" / f"{i['shortCode']}.json").exists()]
-    posts = infer_columns(map_posts(raw_posts, kept, brands), dataset=dataset)
+            if h in brands and h not in seen and not p.get("error"):
+                seen.add(h)
+                info.append({"brand": brands[h], "instagram": h, "followers": p.get("followersCount")})
+    # A post is kept iff its comments were fetched (scrape: filter_posts; top-up: by commentsCount).
+    frames, done = [], set()
+    for f in sorted(apify_dir.glob("posts*.json")):  # posts.json + posts_topup.json
+        raw = read_raw(f)
+        items = [i for i in raw["items"] if i.get("shortCode") and i.get("url") and i["shortCode"] not in done
+                 and (apify_dir / "comments" / f"{i['shortCode']}.json").exists()]
+        done |= {i["shortCode"] for i in items}
+        frames.append(map_posts(raw, items, brands))
+    posts = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=POST_COLS)
+    posts = infer_columns(posts, dataset=dataset)
     frames = [map_comments(read_raw(apify_dir / "comments" / f"{p['post_id']}.json"), p)
               for p in posts.to_dict("records")]
     comments = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=COMMENT_COLS)

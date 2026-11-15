@@ -16,6 +16,7 @@ import clean  # noqa: E402
 import import_csv  # noqa: E402
 import map_apify  # noqa: E402
 import scrape_apify as sa  # noqa: E402
+import topup_apify  # noqa: E402
 
 FIX = Path(__file__).parent / "fixtures" / "apify"
 USERNAMES = ["ayesha_k", "Sana.R", "zara99", "hina_m", "maria.b", "nida_x", "sapphirepakistan"]
@@ -90,6 +91,9 @@ class FakeClient:
 
     def dataset(self, ds_id):
         return FakeDataset(self.datasets[ds_id])
+
+    def run(self, run_id):  # usage re-fetch: Apify reports 0.01 per run here
+        return type("R", (), {"get": lambda _self: type("Run", (), {"usage_total_usd": 0.01})()})()
 
 
 @pytest.fixture
@@ -194,11 +198,12 @@ def test_budget_guard_aborts_before_any_call(tmp_path):
 
 def test_budget_counts_previous_spend(tmp_path):
     log = tmp_path / "runs.jsonl"
-    log.write_text(json.dumps({"step": "comments", "est_cost": 9.0, "usage_usd": 1.0}) + "\n"
-                   + json.dumps({"step": "comments", "est_cost": 0.04, "usage_usd": None}) + "\n")
-    assert sa.spent_so_far(log) == pytest.approx(1.04)
+    log.write_text(json.dumps({"step": "comments", "est_cost": 0.5, "usage_usd": 1.0}) + "\n"
+                   + json.dumps({"step": "comments", "est_cost": 0.04, "usage_usd": None}) + "\n"
+                   + json.dumps({"step": "posts", "est_cost": 0.03, "usage_usd": 0.0}) + "\n")
+    assert sa.spent_so_far(log) == pytest.approx(1.07)  # max(usage, est) per run
     client = FakeClient()
-    with pytest.raises(sa.BudgetExceeded):  # 1.04 spent + 4.00 worst case > 4.50
+    with pytest.raises(sa.BudgetExceeded):  # 1.07 spent + 4.00 worst case > 4.50
         sa.scrape(copy.deepcopy(TARGETS), client, tmp_path / "real", log)
     with pytest.raises(sa.BudgetExceeded):  # per-run guard: no call once a single run would cross the budget
         sa.run_actor(client, {**TARGETS, "max_budget_usd": 1.05}, "comments", {}, 15, log, dry=False)
@@ -268,3 +273,61 @@ def test_cli_estimate_offline_and_rejects_synthetic():
         r = subprocess.run([sys.executable, str(ROOT / "pipeline" / script), "--dataset", "synthetic"],
                            capture_output=True, text=True, timeout=60, env=env)
         assert r.returncode != 0
+
+
+def test_refresh_usage_replaces_caps_with_real_spend(scraped):
+    _, _, client, base = scraped
+    log = base / "runs.jsonl"
+    sa.refresh_usage(client, log, min_age_s=0)
+    rows = sa.read_log(log)
+    assert all(r["usage_refreshed"] and r["usage_usd"] == 0.01 for r in rows)
+    assert sa.spent_so_far(log) == pytest.approx(0.01 * len(rows))
+
+
+def test_topup_selects_by_comments_count_and_merges(scraped):
+    posts, _, client, base = scraped
+    apify = base / "apify"
+    (apify / "comments" / "SAP2.json").unlink()  # SAP2 becomes an unfetched candidate
+    extra = [{**p, "shortCode": f"NEW{n}", "url": f"https://www.instagram.com/p/NEW{n}/", "ownerUsername": "newbrand",
+              "commentsCount": cc} for n, (p, cc) in enumerate(zip(fixture("posts.json"), [50, 5, 30]))]
+    sa._save(apify / "posts_topup.json", {"actor": "a", "run_id": "r", "collected_at": "2026-11-16T00:00:00+00:00",
+                                          "items": extra})
+    t = {**copy.deepcopy(TARGETS), "since": "2026-01-01", "caption_keywords": [], "max_budget_usd": 100,
+         "brands": TARGETS["brands"] + [{"name": "New", "instagram": "newbrand"}],
+         "topup": {"brands": ["newbrand"], "scan_posts_per_brand": 25, "since": "2026-01-01", "min_comments_count": 10}}
+    cands = topup_apify.candidates(apify, t["topup"])
+    counts = [c.get("commentsCount") for c in cands]
+    assert counts == sorted(counts, reverse=True) and all(n >= 10 for n in counts)
+    assert {"NEW0", "NEW2"} <= {c["shortCode"] for c in cands} and "NEW1" not in {c["shortCode"] for c in cands}
+    fresh = FakeClient()
+    topup_apify.topup(fresh, t, apify, base / "runs.jsonl")
+    assert all(c[0].endswith("comment-scraper") for c in fresh.calls)  # posts_topup.json exists → no re-scan
+    got = pd.read_parquet(base / "posts.parquet")
+    assert {"NEW0", "NEW2"} <= set(got["post_id"]) and set(posts["post_id"]) - {"SAP2"} <= set(got["post_id"])
+    assert (got.set_index("post_id").loc["NEW0", "brand"] == "New")
+
+
+def test_topup_stops_at_budget(scraped):
+    _, _, _, base = scraped
+    apify = base / "apify"
+    for f in (apify / "comments").glob("*.json"):
+        f.unlink()
+    log = base / "runs.jsonl"
+    client = FakeClient()  # usage never reported → each run counts at its cap
+    client.run = lambda rid: type("R", (), {"get": lambda _s: type("Run", (), {"usage_total_usd": None})()})()
+    sa.refresh_usage(client, log, min_age_s=0)
+    t = {**copy.deepcopy(TARGETS), "caption_keywords": [], "max_budget_usd": sa.spent_so_far(log) + 0.05,
+         "topup": {"brands": [], "scan_posts_per_brand": 25, "since": "2020-01-01", "min_comments_count": 0}}
+    sa._save(apify / "posts_topup.json", {"actor": "a", "run_id": "r", "collected_at": "2026-11-16T00:00:00+00:00",
+                                          "items": []})
+    topup_apify.topup(client, t, apify, log)
+    assert 1 <= len(client.calls) < 4  # stopped before the 4 candidates were all fetched
+    assert sa.spent_so_far(log) <= t["max_budget_usd"]
+
+
+def test_collab_post_brand_from_feed():
+    brands = map_apify.brand_map(TARGETS)
+    collab = {"ownerUsername": "influencer_x", "inputUrl": "https://www.instagram.com/gulahmedfashion/"}
+    assert map_apify.post_brand(collab, brands) == "Gul Ahmed"
+    assert map_apify.post_brand({"ownerUsername": "khaadiofficial"}, brands) == "Khaadi"
+    assert map_apify.post_brand({"ownerUsername": "someone"}, brands) == "someone"

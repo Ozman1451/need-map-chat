@@ -3,16 +3,24 @@
 brands:
   - name: Sapphire
     instagram: sapphirepakistan
-  - name: Khaadi
-    instagram: khaadiofficial
   - name: Gul Ahmed
     instagram: gulahmedfashion
-since: "2026-03-01"          # only posts after this date
-caption_keywords: ["lawn"]   # keep posts whose caption mentions any of these
-max_posts_per_brand: 30
-scan_posts_per_brand: 60     # posts fetched per brand before the keyword filter (each one is billed)
+  - name: Khaadi                 # top-up brands below: verified via profile actor 2026-11-16
+    instagram: khaadi
+  - name: Sana Safinaz
+    instagram: sanasafinazofficial
+  - name: J.
+    instagram: j.junaidjamshed
+  - name: Nishat Linen
+    instagram: nishatlinen
+  - name: Agha Noor
+    instagram: aghanoorofficial
+since: "2026-01-01"          # only posts after this date
+caption_keywords: []           # keep posts whose caption mentions any of these
+max_posts_per_brand: 22
+scan_posts_per_brand: 50     # posts fetched per brand before the keyword filter (each one is billed)
 max_comments_per_post: 15     # official comment actor on the free plan returns ~15/post anyway
-max_budget_usd: 4.50           # scraper aborts before exceeding this (Apify free plan = $5/month)
+max_budget_usd: 3.28           # abort before exceeding (runs.jsonl spend: real usage, else cap). = $1.03 spent + $2.25 top-up
 # Optional: exact post URLs. If non-empty, profile discovery is skipped.
 post_urls: []
 # Apify actor IDs (check apify.com store; Claude reads each actor's README before coding)
@@ -30,3 +38,10 @@ start_fee_usd:
   profile: 0
   posts: 0
   comments: 0
+# Top-up (pipeline/topup_apify.py): scan these handles once, then fetch comments for the most-commented
+# unfetched posts across ALL scanned posts (incl. Sapphire / Gul Ahmed) until max_budget_usd.
+topup:
+  brands: [khaadi, sanasafinazofficial, j.junaidjamshed, nishatlinen, aghanoorofficial]
+  scan_posts_per_brand: 25
+  since: "2026-01-01"
+  min_comments_count: 10

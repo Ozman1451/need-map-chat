@@ -65,11 +65,30 @@ def check_budget(spent: float, cost: float, budget: float) -> None:
 
 
 def spent_so_far(log_path: Path) -> float:
-    """Sum of real usage (else the run's cap) over runs.jsonl — dry runs count too (same credit)."""
+    """Spend over runs.jsonl (dry runs count too, same credit). Refreshed rows (refresh_usage) count their
+    real usage when Apify reported one; other rows max(usage, cap) — usage is often 0/partial at call()."""
+    def cost(r: dict) -> float:
+        u = r.get("usage_usd") or 0.0
+        return u if r.get("usage_refreshed") and u > 0 else max(u, r["est_cost"])
+    return sum(cost(r) for r in read_log(log_path))
+
+
+def read_log(log_path: Path) -> list[dict]:
     if not log_path.exists():
-        return 0.0
-    rows = [json.loads(line) for line in log_path.read_text("utf-8").splitlines() if line.strip()]
-    return sum(r["usage_usd"] if r.get("usage_usd") is not None else r["est_cost"] for r in rows)
+        return []
+    return [json.loads(line) for line in log_path.read_text("utf-8").splitlines() if line.strip()]
+
+
+def refresh_usage(client, log_path: Path, min_age_s: float = 20) -> None:
+    """Re-fetch real usage_total_usd for logged runs not yet refreshed (older than min_age_s)."""
+    rows, now, changed = read_log(log_path), datetime.now(timezone.utc), False
+    for r in rows:
+        if r.get("usage_refreshed") or (now - datetime.fromisoformat(r["ts"])).total_seconds() < min_age_s:
+            continue
+        run = client.run(r["run_id"]).get()
+        r["usage_usd"], r["usage_refreshed"], changed = getattr(run, "usage_total_usd", None), True, True
+    if changed:
+        log_path.write_text("".join(json.dumps(r) + "\n" for r in rows), "utf-8")
 
 
 def print_plan(t: dict, label: str) -> dict:
