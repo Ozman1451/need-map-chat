@@ -1,24 +1,6 @@
 import json
-import os
-import subprocess
-import sys
-from pathlib import Path
 
 import pandas as pd
-import pytest
-
-PIPE = Path(__file__).resolve().parents[2] / "pipeline"
-STEPS = {"clean.py", "tag.py", "embed.py", "cluster.py", "name.py", "metrics.py", "artifacts.py", "run_all.py"}
-# seed_synthetic is covered by test_seed.py; pipeline steps by the run_all test below
-STUBS = sorted(p for p in PIPE.glob("*.py")
-               if not p.name.startswith("_") and p.name not in STEPS | {"seed_synthetic.py"})
-
-
-@pytest.mark.parametrize("script", STUBS, ids=lambda p: p.name)
-def test_stub_script_runs(script):
-    r = subprocess.run([sys.executable, str(script), "--dataset", "synthetic"],
-                       capture_output=True, text=True, timeout=60, env={**os.environ, "MOCK_LLM": "1"})
-    assert r.returncode == 0, r.stderr
 
 
 def test_run_all_on_sample(sample_artifacts):

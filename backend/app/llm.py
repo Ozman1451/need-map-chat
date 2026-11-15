@@ -520,6 +520,73 @@ def _mock_name(p: dict) -> dict:
             "action": f"Address {terms[0]} questions in captions and replies."}
 
 
+# ---------------------------------------------------------------- real posts: campaign / content_type
+CAMPAIGNS = ["Eid", "11.11", "12.12", "Summer Lawn", "Winter", "Regular"]
+INFER_BATCH = 25
+
+
+class PostInference(BaseModel):
+    post_id: str
+    campaign: Literal["Eid", "11.11", "12.12", "Summer Lawn", "Winter", "Regular"]
+    content_type: Optional[Literal["Influencer", "Sale Announcement"]] = Field(
+        None, description="only if the caption clearly is an influencer/celebrity post or a sale announcement")
+
+
+class PostInferences(BaseModel):
+    posts: list[PostInference]
+
+
+INFER_PROMPT = """You classify Instagram posts of Pakistani lawn/clothing brands from caption, date and media type.
+For EACH post return:
+- campaign: Eid (Eid/festive/Chand Raat) | 11.11 | 12.12 | Summer Lawn (summer/spring lawn collection) | \
+Winter (winter/khaddar/shawl) | Regular (anything else)
+- content_type: "Influencer" if the post features a named influencer/celebrity/ambassador, \
+"Sale Announcement" if it announces a sale/discount/flat-% off, otherwise null
+Return one entry per post, same post_id, JSON {"posts": [...]}.
+
+Posts (JSON):
+"""
+
+
+def infer_posts(posts: list[dict], *, dataset: str) -> list[dict]:
+    """posts: [{post_id, caption, posted_at, media}] → [{post_id, campaign, content_type|None}], same order.
+    INFER_BATCH posts per cached call (Gemma falls back to JSON-in-prompt inside generate_json)."""
+    out: list[dict] = []
+    for i in range(0, len(posts), INFER_BATCH):
+        chunk = [{k: str(p.get(k) or "")[:600] for k in ("post_id", "caption", "posted_at", "media")}
+                 for p in posts[i:i + INFER_BATCH]]
+        out.extend(_mock_infer(chunk) if is_mock() else _infer_chunk(chunk, dataset))
+    return out
+
+
+def _infer_chunk(chunk: list[dict], dataset: str) -> list[dict]:
+    prompt = INFER_PROMPT + json.dumps(chunk, ensure_ascii=False)
+    res = generate_json(prompt, PostInferences, dataset=dataset, kind="infer", payload=chunk, temperature=0.0)
+    got = {r["post_id"]: r for r in res["posts"]}
+    missing = [c for c in chunk if c["post_id"] not in got]
+    if missing and len(missing) < len(chunk):
+        got.update({r["post_id"]: r for r in _infer_chunk(missing, dataset)})
+    elif missing:
+        raise RuntimeError(f"post inference returned nothing for {len(missing)} posts")
+    return [got[c["post_id"]] for c in chunk]
+
+
+_CAMPAIGN_KW = [("12.12", ("12.12", "12 12")), ("11.11", ("11.11", "11 11")),
+                ("Eid", ("eid", "festive", "chand raat")), ("Winter", ("winter", "khaddar", "shawl")),
+                ("Summer Lawn", ("summer", "spring", "lawn"))]
+
+
+def _mock_infer(chunk: list[dict]) -> list[dict]:
+    rows = []
+    for p in chunk:
+        t = p["caption"].lower()
+        camp = next((c for c, kws in _CAMPAIGN_KW if any(k in t for k in kws)), "Regular")
+        ct = ("Sale Announcement" if any(k in t for k in ("sale", "% off", "discount", "flat"))
+              else "Influencer" if any(k in t for k in ("ft.", "featuring", "wearing", "ambassador")) else None)
+        rows.append({"post_id": p["post_id"], "campaign": camp, "content_type": ct})
+    return rows
+
+
 # ---------------------------------------------------------------- live chat (agent)
 def user_content(text: str):
     from google.genai import types

@@ -19,6 +19,7 @@ def _api_error(code):
 def live(monkeypatch):
     """Non-mock mode; the SDK layer is still patched per test."""
     monkeypatch.delenv("MOCK_LLM")
+    monkeypatch.setattr(llm.settings, "mock_llm", False)  # .env may set MOCK_LLM=1
     monkeypatch.setattr(llm, "_gates", {})
 
 

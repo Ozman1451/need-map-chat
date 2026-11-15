@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     gemini_batch_model: str = ""
     gemini_embed_model: str = ""
     gemini_api_key: str = ""
+    apify_token: str = ""
     embed_backend: str = "local"  # local (sentence-transformers, CPU) | gemini
     local_embed_model: str = "intfloat/multilingual-e5-base"
     gemini_rpm: int = 12  # client-side requests/min per generate model (free tier is 15)

@@ -10,7 +10,8 @@ brands:
 since: "2026-03-01"          # only posts after this date
 caption_keywords: ["lawn"]   # keep posts whose caption mentions any of these
 max_posts_per_brand: 30
-max_comments_per_post: 20      # official comment actor on the free plan returns ~15/post anyway
+scan_posts_per_brand: 60     # posts fetched per brand before the keyword filter (each one is billed)
+max_comments_per_post: 15     # official comment actor on the free plan returns ~15/post anyway
 max_budget_usd: 4.50           # scraper aborts before exceeding this (Apify free plan = $5/month)
 # Optional: exact post URLs. If non-empty, profile discovery is skipped.
 post_urls: []
@@ -24,3 +25,8 @@ price_per_1k:
   profile: 2.70
   posts: 2.70
   comments: 2.60
+# Per-run start fee (USD) per actor. All three are pay-per-event with no start event (checked 2026-11-16).
+start_fee_usd:
+  profile: 0
+  posts: 0
+  comments: 0
