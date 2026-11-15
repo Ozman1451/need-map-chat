@@ -91,3 +91,11 @@ def test_api_tool_manifest_dataset(loaded_store):
     assert m["dataset"] == "sample" and "sample" in m["datasets"] and m["options"]["brand"]
     assert c.post("/api/dataset", json={"name": "sample"}).json()["dataset"] == "sample"
     assert c.post("/api/dataset", json={"name": "nope"}).status_code == 404
+
+
+def test_small_brands_grouped_as_others(loaded_store, monkeypatch):
+    df = loaded_store.df
+    keep = df["brand"].value_counts().index[0]
+    monkeypatch.setattr(tools, "MIN_BRAND_N", int((df["brand"] == keep).sum()))
+    groups = tools.need_share_by("brand").charts[0].data["groups"]
+    assert groups == [keep, tools.OTHERS]

@@ -118,6 +118,7 @@ Also: `GET /api/health`, `GET /api/manifest`, `POST /api/dataset {name}`, `POST 
 ## 8. Testing
 - pytest on `data/sample/`: cleaning; each clustering function returns valid labels; k-selection picks within range; drill-down creates children; every tool returns valid ChartSpecs; agent loop with mocked LLM emits events in order; Apify mapper on saved fake JSON; budget guard aborts over budget.
 - Frontend: `npm run lint`, `npm run build`, `npm run shot` (Playwright; `/` after one canned chat with `MOCK_LLM=1`; saves to `shots/`).
+- `MOCK_CHAT=1` (e.g. `MOCK_CHAT=1 make dev DATASET=real`): only the chat agent uses the offline keyword router; pipeline / tagging Gemini calls stay real. `MOCK_LLM=1` mocks everything.
 
 ## 9. Definition of done
 - Clean clone in env `ccc`: `make setup && make seed && make pipeline && make dev` works (synthetic).

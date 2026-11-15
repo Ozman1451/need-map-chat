@@ -12,7 +12,7 @@ from sklearn.metrics import (adjusted_rand_score, calinski_harabasz_score, davie
                              normalized_mutual_info_score, silhouette_score)
 
 from _cli import parser, processed_dir
-from cluster import KS, SEED, dbscan_fit, gmm_model, kmeans_fit, reduce, select_by_silhouette, ward_fit
+from cluster import KS, SEED, ks_for, dbscan_fit, gmm_model, kmeans_fit, reduce, select_by_silhouette, ward_fit
 
 N_BOOT, FRAC = 10, 0.8
 
@@ -116,7 +116,7 @@ def main() -> None:
     info = json.loads((d / "cluster_info.json").read_text())
     raw = load_raw(d, frame, truth)
     U = np.load(d / "x_umap10.npy") if (d / "x_umap10.npy").exists() else None
-    m = compute_metrics(np.load(d / "x_pca.npy"), frame, truth, info, raw, U=U)
+    m = compute_metrics(np.load(d / "x_pca.npy"), frame, truth, info, raw, ks=ks_for(args.dataset), U=U)
     (d / "metrics.json").write_text(json.dumps(m, indent=1))
     print(f"metrics [{args.dataset}]: " + ", ".join(f"{a} sil={v['silhouette']}" for a, v in m["algorithms"].items())
           + ("" if raw else " (raw-vs-gloss skipped: no raw embeddings yet)"))

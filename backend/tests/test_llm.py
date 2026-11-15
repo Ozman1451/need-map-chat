@@ -220,3 +220,31 @@ def test_name_clusters_batches_of_15_and_retries_missing(live, monkeypatch):
     monkeypatch.setattr(llm, "generate_json", fake)
     out = llm.name_clusters([{"cluster_id": f"C{i}"} for i in range(20)], dataset="t")
     assert sizes == [15, 1, 5] and set(out) == {f"C{i}" for i in range(20)}
+
+
+def test_mock_chat_only_mocks_chat(monkeypatch):
+    monkeypatch.delenv("MOCK_LLM", raising=False)
+    monkeypatch.setattr(llm.settings, "mock_llm", False)
+    monkeypatch.setenv("MOCK_CHAT", "1")
+    assert llm.is_mock_chat() and not llm.is_mock()
+    r = llm.chat([llm.user_content("what do they want?")], [{"name": "get_need_clusters"}], "sys")
+    assert r["function_calls"][0]["name"] == "get_need_clusters"
+
+
+def test_timeouts_are_retryable():
+    import httpx
+    assert llm._retryable(httpx.ReadTimeout("slow"))
+
+
+def test_infer_splits_batch_on_server_error(monkeypatch):
+    from google.genai import errors
+    calls = []
+
+    def fake(prompt, schema, *, payload, **kw):
+        calls.append(len(payload))
+        if len(payload) > 1:
+            raise errors.ServerError(500, {"error": {"message": "x"}})
+        return {"posts": [{"post_id": payload[0]["post_id"], "campaign": "Winter", "content_type": None}]}
+    monkeypatch.setattr(llm, "generate_json", fake)
+    out = llm._infer_chunk([{"post_id": "a"}, {"post_id": "b"}], "real")
+    assert [o["post_id"] for o in out] == ["a", "b"] and calls == [2, 1, 1]

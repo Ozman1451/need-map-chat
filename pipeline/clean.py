@@ -1,7 +1,8 @@
 """Step 1: clean comments → data/processed/<ds>/{comments,posts}.parquet.
 
 Drops empty / emoji-only / URL-only comments, normalises whitespace (emojis kept) and removes
-exact duplicates only within the same post — repeats across posts carry need frequency.
+exact duplicates within the same post, plus the same user posting the same text on several posts
+(copy-paste spam); repeats by different users across posts still carry need frequency.
 """
 import re
 
@@ -28,11 +29,14 @@ def clean_comments(comments: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     keep = df["text"].map(has_content)
     df = df[keep]
     dup = df.duplicated(["post_id", "text"])
-    df = df[~dup].reset_index(drop=True)
+    df = df[~dup]
+    rep = df["user_hash"].notna() & df.duplicated(["user_hash", "text"]) if "user_hash" in df else df["text"].isna()
+    df = df[~rep].reset_index(drop=True)
     if "true_need" not in df:
         df["true_need"] = None
     stats = {"input": len(comments), "dropped_no_content": int((~keep).sum()),
-             "dropped_dup_within_post": int(dup.sum()), "output": len(df)}
+             "dropped_dup_within_post": int(dup.sum()),
+             "dropped_user_repeat": int(rep.sum()), "output": len(df)}
     return df, stats
 
 

@@ -44,7 +44,8 @@ def test_clean_rules():
     out, stats = clean.clean_comments(df)
     assert out["comment_id"].tolist() == ["a", "f", "g", "h"]  # b emoji, c URL, d empty, e dup in p1
     assert out["text"].iloc[0] == "price plz" and "😍" in out["text"].iloc[1]  # whitespace normalised, emoji kept
-    assert stats == {"input": 8, "dropped_no_content": 3, "dropped_dup_within_post": 1, "output": 4}
+    assert stats == {"input": 8, "dropped_no_content": 3, "dropped_dup_within_post": 1,
+                     "dropped_user_repeat": 0, "output": 4}
     assert out["true_need"].isna().all()  # column added when absent (real data)
 
 
@@ -206,3 +207,14 @@ def test_daily_quota_is_not_retried():
         code = 429
     assert llm.is_daily_quota(E("Quota exceeded ... quotaId: EmbedContentRequestsPerDayPerProjectPerModel-FreeTier"))
     assert not llm.is_daily_quota(E("quotaId: EmbedContentRequestsPerMinutePerProjectPerModel-FreeTier"))
+
+
+def test_clean_drops_same_user_repeats_across_posts():
+    df = pd.DataFrame({"comment_id": list("abcd"), "post_id": ["p1", "p2", "p3", "p4"],
+                       "user_hash": ["u1", "u1", "u2", None], "text": ["price plz"] * 4, "is_synthetic": 0})
+    out, stats = clean.clean_comments(df)
+    assert out["comment_id"].tolist() == ["a", "c", "d"] and stats["dropped_user_repeat"] == 1
+
+
+def test_real_dataset_uses_k_4_to_10():
+    assert list(cluster.ks_for("real")) == list(range(4, 11)) and cluster.ks_for("synthetic") == cluster.KS

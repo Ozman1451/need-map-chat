@@ -265,13 +265,21 @@ def get_unusual_comments(brand: str | None = None, n: int = 12) -> ToolResult:
     return result(summary, charts)
 
 
+MIN_BRAND_N = 50
+OTHERS = "Others"
+
+
 def need_share_by(group_by: str = "campaign") -> ToolResult:
     """Share of each K-Means need per campaign / brand / content type (100% per group)."""
     if group_by not in ("campaign", "brand", "content_type"):
         raise ToolError("group_by must be one of: campaign, brand, content_type")
     df = store.ensure().df
-    tab = pd.crosstab(df[group_by], df["kmeans_id"])
-    tab = tab.loc[tab.sum(axis=1).sort_values(ascending=False).index]
+    keys = df[group_by]
+    if group_by == "brand":  # brands with < MIN_BRAND_N comments pooled so shares aren't noise
+        n = keys.value_counts()
+        keys = keys.where(~keys.isin(n[n < MIN_BRAND_N].index), OTHERS)
+    tab = pd.crosstab(keys, df["kmeans_id"])
+    tab = tab.loc[sorted(tab.index, key=lambda g: (g == OTHERS, -tab.loc[g].sum()))]  # Others last
     order = [r["id"] for r in counted_clusters(df, "kmeans")]
     tab = tab[[c for c in order if c in tab.columns]]
     share = tab.div(tab.sum(axis=1), axis=0)

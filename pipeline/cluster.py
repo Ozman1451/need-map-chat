@@ -19,6 +19,7 @@ from _cli import parser, processed_dir
 
 SEED = 42
 KS = range(4, 15)
+KS_BY_DATASET = {"real": range(4, 11)}  # ~800 real comments: >10 needs is over-splitting
 MIN_SAMPLES = 10
 MIN_SAMPLES_SWEEP = range(5, 21)
 NOISE_RANGE = (0.02, 0.08)
@@ -30,6 +31,10 @@ PREFIX = {"kmeans": "C", "ward": "W", "dbscan": "D", "gmm": "G"}
 
 
 # ---------------------------------------------------------------- primitives
+def ks_for(dataset: str) -> range:
+    return KS_BY_DATASET.get(dataset, KS)
+
+
 def reduce(X: np.ndarray, n: int = 50) -> np.ndarray:
     n = min(n, X.shape[0] - 1, X.shape[1])
     return PCA(n, random_state=SEED).fit_transform(X)
@@ -219,7 +224,7 @@ def main() -> None:
     args = parser("Step 4: clustering").parse_args()
     d = processed_dir(args.dataset)
     ids = pd.read_parquet(d / "emb_ids.parquet")
-    frame, X, U, info = run_clustering(np.load(d / "emb_gloss.npy"))
+    frame, X, U, info = run_clustering(np.load(d / "emb_gloss.npy"), ks=ks_for(args.dataset))
     frame.insert(0, "comment_id", ids["comment_id"].to_numpy())
     frame.to_parquet(d / "comment_clusters.parquet", index=False)
     np.save(d / "x_pca.npy", X)

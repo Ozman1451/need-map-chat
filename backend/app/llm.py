@@ -41,6 +41,11 @@ def is_mock() -> bool:
     return os.environ.get("MOCK_LLM", "").lower() in ("1", "true", "yes") or settings.mock_llm
 
 
+def is_mock_chat() -> bool:
+    """MOCK_CHAT=1 → only the chat agent uses the keyword router; pipeline calls stay real."""
+    return is_mock() or os.environ.get("MOCK_CHAT", "").lower() in ("1", "true", "yes")
+
+
 def model_name(kind: Literal["chat", "batch", "embed"]) -> str:
     name = getattr(settings, f"gemini_{kind}_model")
     if not name:
@@ -48,6 +53,7 @@ def model_name(kind: Literal["chat", "batch", "embed"]) -> str:
     return name
 
 
+HTTP_TIMEOUT_MS = 180_000
 _client_obj = None
 _client_lock = threading.Lock()
 
@@ -57,7 +63,9 @@ def _client():
     with _client_lock:  # one shared client; a GC'd duplicate would close its httpx client mid-request
         if _client_obj is None:
             from google import genai
-            _client_obj = genai.Client(api_key=settings.gemini_api_key or None)
+            from google.genai import types  # timeout (ms): a hung request must fail and be retried
+            _client_obj = genai.Client(api_key=settings.gemini_api_key or None,
+                                       http_options=types.HttpOptions(timeout=HTTP_TIMEOUT_MS))
     return _client_obj
 
 
@@ -95,9 +103,12 @@ def is_daily_quota(exc: BaseException) -> bool:
 
 
 def _retryable(exc: BaseException) -> bool:
+    import httpx
     from google.genai import errors
     if is_daily_quota(exc):
         return False
+    if isinstance(exc, httpx.TimeoutException):
+        return True
     return isinstance(exc, errors.APIError) and (exc.code == 429 or (exc.code or 0) >= 500)
 
 
@@ -560,8 +571,16 @@ def infer_posts(posts: list[dict], *, dataset: str) -> list[dict]:
 
 
 def _infer_chunk(chunk: list[dict], dataset: str) -> list[dict]:
+    from google.genai import errors
     prompt = INFER_PROMPT + json.dumps(chunk, ensure_ascii=False)
-    res = generate_json(prompt, PostInferences, dataset=dataset, kind="infer", payload=chunk, temperature=0.0)
+    try:
+        res = generate_json(prompt, PostInferences, dataset=dataset, kind="infer", payload=chunk, temperature=0.0)
+    except errors.ServerError:  # a batch the model keeps failing on (5xx after retries) → halves
+        if len(chunk) < 2:
+            raise
+        log.warning("post inference: 5xx on %d posts — splitting the batch", len(chunk))
+        half = len(chunk) // 2
+        return _infer_chunk(chunk[:half], dataset) + _infer_chunk(chunk[half:], dataset)
     got = {r["post_id"]: r for r in res["posts"]}
     missing = [c for c in chunk if c["post_id"] not in got]
     if missing and len(missing) < len(chunk):
@@ -617,7 +636,7 @@ def chat(contents: list, tools: list[dict], system: str) -> dict:
     tools: FunctionDeclaration dicts (name, description, parameters_json_schema).
     → {"text": str, "function_calls": [{"id", "name", "args"}], "content": model Content for history}.
     The returned Content keeps Gemini 3 thought signatures, so it must be appended to history as-is."""
-    if is_mock():
+    if is_mock_chat():
         return _mock_chat(contents, tools)
     from google.genai import types
     cfg = types.GenerateContentConfig(
