@@ -1,0 +1,26 @@
+# Real-data scope for Phase 6 (make scrape). Keep it small: Apify free credit is limited.
+# Verify each Instagram handle by opening it in a browser first.
+brands:
+  - name: Sapphire
+    instagram: sapphirepakistan
+  - name: Khaadi
+    instagram: khaadiofficial
+  - name: Gul Ahmed
+    instagram: gulahmedfashion
+since: "2026-03-01"          # only posts after this date
+caption_keywords: ["lawn"]   # keep posts whose caption mentions any of these
+max_posts_per_brand: 30
+max_comments_per_post: 20      # official comment actor on the free plan returns ~15/post anyway
+max_budget_usd: 4.50           # scraper aborts before exceeding this (Apify free plan = $5/month)
+# Optional: exact post URLs. If non-empty, profile discovery is skipped.
+post_urls: []
+# Apify actor IDs (check apify.com store; Claude reads each actor's README before coding)
+actors:
+  profile: apify/instagram-profile-scraper
+  posts: apify/instagram-post-scraper
+  comments: apify/instagram-comment-scraper
+# Price per 1,000 results on YOUR plan — check each actor's pricing tab and update before running
+price_per_1k:
+  profile: 2.70
+  posts: 2.70
+  comments: 2.60
