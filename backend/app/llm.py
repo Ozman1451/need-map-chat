@@ -520,10 +520,36 @@ def _mock_name(p: dict) -> dict:
             "action": f"Address {terms[0]} questions in captions and replies."}
 
 
-# ---------------------------------------------------------------- live chat (agent, Phase 3)
+# ---------------------------------------------------------------- live chat (agent)
+def user_content(text: str):
+    from google.genai import types
+    return types.Content(role="user", parts=[types.Part(text=text)])
+
+
+def model_content(text: str):
+    from google.genai import types
+    return types.Content(role="model", parts=[types.Part(text=text)])
+
+
+def calls_content(calls: list[dict]):
+    """Model turn for function calls when no SDK Content came back (mock)."""
+    from google.genai import types
+    return types.Content(role="model", parts=[types.Part(function_call=types.FunctionCall(
+        id=c.get("id"), name=c["name"], args=c["args"])) for c in calls])
+
+
+def responses_content(results: list[dict]):
+    """results: [{id, name, response: dict}] → one user turn of function responses."""
+    from google.genai import types
+    return types.Content(role="user", parts=[types.Part(function_response=types.FunctionResponse(
+        id=r.get("id"), name=r["name"], response=r["response"])) for r in results])
+
+
 def chat(contents: list, tools: list[dict], system: str) -> dict:
-    """One function-calling turn. tools: FunctionDeclaration dicts (name, description, parameters).
-    → {"text": str, "function_calls": [{"name", "args"}], "content": model Content (for history)}."""
+    """One function-calling turn (automatic function calling off). contents: list of types.Content;
+    tools: FunctionDeclaration dicts (name, description, parameters_json_schema).
+    → {"text": str, "function_calls": [{"id", "name", "args"}], "content": model Content for history}.
+    The returned Content keeps Gemini 3 thought signatures, so it must be appended to history as-is."""
     if is_mock():
         return _mock_chat(contents, tools)
     from google.genai import types
@@ -537,15 +563,66 @@ def chat(contents: list, tools: list[dict], system: str) -> dict:
     def call():
         with gate(model).slot():
             return _client().models.generate_content(model=model, contents=contents, config=cfg)
-    resp = _retry(call)()
-    calls = [{"name": fc.name, "args": dict(fc.args or {})} for fc in (resp.function_calls or [])]
+    try:
+        resp = _retry(call)()
+    except Exception as exc:
+        if is_daily_quota(exc):
+            raise DailyQuotaExceeded(str(exc)[:300]) from exc
+        raise
+    calls = [{"id": fc.id, "name": fc.name, "args": dict(fc.args or {})} for fc in (resp.function_calls or [])]
     content = resp.candidates[0].content if resp.candidates else None
-    return {"text": "" if calls else (resp.text or ""), "function_calls": calls, "content": content}
+    text = "".join(p.text for p in (content.parts or []) if p.text and not p.thought) if content else ""
+    return {"text": "" if calls else text, "function_calls": calls, "content": content}
+
+
+_MOCK_ROUTES = [  # (keywords, tool) — first match wins; default get_need_clusters
+    (("split", "drill", "sub-need", "further", "break down"), "drill_down_cluster"),
+    (("weird", "unusual", "odd", "spam", "outlier", "ajeeb"), "get_unusual_comments"),
+    (("vs", "campaign", "change", "differ", "compare brand", "by brand", "content type"), "need_share_by"),
+    (("algorithm", "silhouette", "best clustering", "fits best"), "compare_algorithms"),
+    (("example", "show me comments", "sample"), "sample_comments"),
+    (("overview", "how many", "numbers", "kitne"), "get_overview"),
+]
 
 
 def _mock_chat(contents: list, tools: list[dict]) -> dict:
+    """Deterministic offline agent: route the last user text by keyword; after tool replies, answer
+    from their summaries (numbers only from the tool output)."""
     last = contents[-1] if contents else None
-    role = last.get("role") if isinstance(last, dict) else getattr(last, "role", None)
-    if role == "user" and tools:  # first step: call the first tool; after a tool reply: answer
-        return {"text": "", "function_calls": [{"name": tools[0]["name"], "args": {}}], "content": None}
-    return {"text": "Mock reply: here is what the tool found.", "function_calls": [], "content": None}
+    parts = getattr(last, "parts", None) or []
+    responses = [p.function_response for p in parts if p.function_response]
+    if responses or not tools:
+        return {"text": _mock_answer(responses), "function_calls": [], "content": None}
+    text = " ".join(p.text for p in parts if p.text).lower()
+    names = {t["name"] for t in tools}
+    name = next((tool for kws, tool in _MOCK_ROUTES if any(k in text for k in kws) and tool in names),
+                "get_need_clusters" if "get_need_clusters" in names else tools[0]["name"])
+    args: dict = {}
+    m = re.search(r"\[?\b([CWGD]\d+(?:\.\d+)?)\b\]?", text.upper())
+    if name in ("drill_down_cluster", "sample_comments"):
+        args["cluster_id"] = m.group(1) if m else "C1"
+    if m and name == "get_need_clusters":
+        name, args = "sample_comments", {"cluster_id": m.group(1)}
+    for b in ("sapphire", "khaadi", "gul ahmed"):
+        if b in text and name in ("get_need_clusters", "get_overview", "get_unusual_comments"):
+            args["brand"] = b.title()
+    if name == "need_share_by":
+        args["group_by"] = "brand" if "brand" in text else "content_type" if "content" in text else "campaign"
+    calls = [{"id": "mock-1", "name": name, "args": args}]
+    return {"text": "", "function_calls": calls, "content": calls_content(calls)}
+
+
+def _mock_answer(responses: list) -> str:
+    if not responses:
+        return "Mock reply: ask me what your audience wants."
+    fr = responses[-1]
+    s = dict(fr.response or {})
+    if "error" in s:
+        return f"Mock reply: {fr.name} failed — {s['error']}"
+    items = s.get("clusters") or s.get("children") or []
+    if items:
+        lines = "\n".join(f"- {c['id']} {c['name']} ({c['share']:.0%}): {c.get('action', '')}" for c in items[:3])
+        return f"Mock reply: {fr.name} found {len(items)} groups. The biggest is {items[0]['id']}.\n{lines}"
+    if "cluster" in s:
+        return f"Mock reply: here are example comments from {s['cluster']['id']} {s['cluster']['name']}."
+    return f"Mock reply: {fr.name} returned its results — see the canvas."

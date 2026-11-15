@@ -113,10 +113,15 @@ def test_mock_embed_normalised_and_deterministic():
 def test_mock_name_and_chat():
     n = llm.name_clusters([{"cluster_id": "C1", "top_terms": ["price", "plz"]}], dataset="t")
     assert set(n) == {"C1"} and set(n["C1"]) == {"name", "description", "action"}
-    tools = [{"name": "get_overview", "description": "d", "parameters": {"type": "object", "properties": {}}}]
-    r1 = llm.chat([{"role": "user", "parts": [{"text": "hi"}]}], tools, "sys")
-    assert r1["function_calls"][0]["name"] == "get_overview"
-    r2 = llm.chat([{"role": "user"}, {"role": "model"}, {"role": "tool"}], tools, "sys")
+    tools = [{"name": n, "description": "d", "parameters_json_schema": {"type": "object", "properties": {}}}
+             for n in ("get_need_clusters", "drill_down_cluster", "get_overview")]
+    r1 = llm.chat([llm.user_content("Split [C3] further")], tools, "sys")
+    assert r1["function_calls"][0] == {"id": "mock-1", "name": "drill_down_cluster", "args": {"cluster_id": "C3"}}
+    assert r1["content"].role == "model" and r1["content"].parts[0].function_call.name == "drill_down_cluster"
+    r0 = llm.chat([llm.user_content("hi")], tools, "sys")
+    assert r0["function_calls"][0]["name"] == "get_need_clusters"
+    resp = llm.responses_content([{"id": "mock-1", "name": "get_overview", "response": {"n": 1}}])
+    r2 = llm.chat([llm.user_content("hi"), r1["content"], resp], tools, "sys")
     assert r2["text"] and not r2["function_calls"]
 
 

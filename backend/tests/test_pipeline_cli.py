@@ -21,12 +21,8 @@ def test_stub_script_runs(script):
     assert r.returncode == 0, r.stderr
 
 
-def test_run_all_on_sample(tmp_path):
-    env = {**os.environ, "MOCK_LLM": "1", "PIPELINE_OUT": str(tmp_path), "CACHE_ROOT": str(tmp_path / "c")}
-    r = subprocess.run([sys.executable, str(PIPE / "run_all.py"), "--dataset", "sample"],
-                       capture_output=True, text=True, timeout=300, env=env)
-    assert r.returncode == 0, r.stderr[-2000:]
-    a = tmp_path / "artifacts" / "sample"
+def test_run_all_on_sample(sample_artifacts):
+    a = sample_artifacts / "sample"
     cc = pd.read_parquet(a / "comment_clusters.parquet")
     assert list(cc.columns) == ["comment_id", "x", "y", "kmeans", "ward", "dbscan", "gmm", "gmm_prob",
                                 "primary", "sub", "centroid_dist", "unusual", "unusual_score", "unusual_reasons"]
