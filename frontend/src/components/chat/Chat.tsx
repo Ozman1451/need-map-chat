@@ -129,7 +129,7 @@ function Empty({ onAsk }: { onAsk: Ask }) {
           want?
         </h2>
         <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-          Ask in plain words. I cluster Instagram comments on Sapphire, Khaadi and Gul Ahmed lawn posts and show you the
+          Ask in plain words. I cluster Instagram comments on Pakistani clothing-brand posts and show you the
           needs behind them.
         </p>
       </div>

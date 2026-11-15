@@ -10,7 +10,6 @@ const ALGOS = [
   { id: "dbscan", label: "DBSCAN" },
   { id: "gmm", label: "GMM" },
 ];
-const BRANDS = ["Sapphire", "Khaadi", "Gul Ahmed"];
 
 export function TopBar({
   manifest,
@@ -23,6 +22,7 @@ export function TopBar({
   onFilters: (f: Filters) => void;
   onDataset: (name: string) => void;
 }) {
+  const brands = manifest?.options.brand ?? [];
   const campaigns = manifest?.options.campaign ?? [];
   const datasets = manifest?.datasets ?? {};
   const set = (p: Partial<Filters>) => onFilters({ ...filters, ...p });
@@ -36,8 +36,8 @@ export function TopBar({
         </h1>
       </div>
 
-      <div className="flex items-center gap-1">
-        {[null, ...BRANDS].map((b) => (
+      <div className="flex flex-wrap items-center gap-1">
+        {[null, ...brands].map((b) => (
           <button
             key={b ?? "all"}
             type="button"
