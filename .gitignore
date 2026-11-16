@@ -24,3 +24,10 @@ shots/
 *.egg-info/
 frontend/out/
 docs/media/raw/
+brag-output/
+# vendored agent skills (restore with: npx skills experimental_install, from skills-lock.json)
+.claude/skills/brag/
+.claude/skills/hyperframes/
+.claude/skills/hyperframes-cli/
+.claude/skills/hyperframes-registry/
+.claude/skills/media-use/

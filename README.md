@@ -3,8 +3,10 @@
 **Ask "What does my audience want?" and get the answer as charts, clustered from real Instagram comments on Pakistan's biggest fashion brands.**
 
 <p align="center">
-  <video src="docs/media/brag.mp4" autoplay loop muted playsinline width="100%"></video>
+  <a href="docs/media/brag.mp4"><img src="docs/media/brag.jpg" alt="Need Map launch video (42 s): 600 Instagram comments become 10 audience needs. Click to play." width="100%"></a>
 </p>
+
+> ▶️ **Launch video (42 s):** [docs/media/brag.mp4](docs/media/brag.mp4)
 
 <p align="center">
   <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Need Map: chat on the left, a live canvas of clustering charts on the right" width="100%"></a>
@@ -189,3 +191,5 @@ Model names come from the environment: `GEMINI_CHAT_MODEL` (default `gemini-3.5-
 ---
 
 <sub>Built by Usman for the Big Data course, clustering module.</sub>
+
+<sub>Music: "Happy Beats / Business Moves Vol. 12" by Sascha Ende, <a href="https://ende.app/en">ende.app</a>, licensed under <a href="https://ende.app/en/standard-license">CC BY 4.0</a>.</sub>
