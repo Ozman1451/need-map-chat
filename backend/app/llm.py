@@ -30,7 +30,7 @@ NEEDS = [
     "price_inquiry", "discount_request", "delivery_time", "availability_city", "size_fit",
     "fabric_quality", "compliment", "order_complaint", "inbox_request", "purchase_intent",
 ]
-TAG_BATCH = 50
+TAG_BATCH = settings.gemini_tag_batch
 EMBED_BATCH = 100
 CITIES = ["Lahore", "Karachi", "Islamabad", "Rawalpindi", "Faisalabad", "Multan",
           "Peshawar", "Quetta", "Sialkot", "Hyderabad", "Gujranwala", "Dubai", "UK"]
@@ -379,7 +379,7 @@ Comments (JSON):
 
 
 def tag_batch(comments: list[dict], *, dataset: str) -> list[dict]:
-    """comments: [{comment_id, text}] → comment_tags rows, same order. 50 comments per call."""
+    """comments: [{comment_id, text}] → comment_tags rows, same order. TAG_BATCH (default 50) comments per call."""
     out: list[dict] = []
     for i in range(0, len(comments), TAG_BATCH):
         chunk = [{"comment_id": c["comment_id"], "text": c["text"]} for c in comments[i:i + TAG_BATCH]]
@@ -533,7 +533,7 @@ def _mock_name(p: dict) -> dict:
 
 # ---------------------------------------------------------------- real posts: campaign / content_type
 CAMPAIGNS = ["Eid", "11.11", "12.12", "Summer Lawn", "Winter", "Regular"]
-INFER_BATCH = 25
+INFER_BATCH = settings.gemini_infer_batch
 
 
 class PostInference(BaseModel):

@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     apify_token: str = ""
     embed_backend: str = "local"  # local (sentence-transformers, CPU) | gemini
     local_embed_model: str = "intfloat/multilingual-e5-base"
+    gemini_tag_batch: int = 50  # comments per tagging call (raise for a tight daily quota)
+    gemini_infer_batch: int = 25  # posts per campaign/content_type inference call
     gemini_rpm: int = 12  # client-side requests/min per generate model (free tier is 15)
     gemini_embed_rpm: int = 100  # embedding model: free tier 100 RPM, counted per text
     gemini_embed_tpm: int = 25000  # embedding model: free tier 30K TPM; stay under

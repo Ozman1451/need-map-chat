@@ -67,13 +67,13 @@ All four algorithms cluster the same embeddings: K-Means, Ward and GMM in PCA-50
 <!-- metrics:start -->
 | Algorithm | k | Silhouette ↑ | Davies–Bouldin ↓ | Calinski–Harabasz ↑ | Stability (ARI) ↑ | Noise |
 |---|---:|---:|---:|---:|---:|---:|
-| **K-Means** (primary) | 8 | 0.266 | 1.84 | 73.3 | 0.82 | – |
-| Agglomerative (Ward) | 10 | 0.263 | 1.79 | 61.8 | 0.67 | – |
-| Gaussian Mixture | 6 | 0.188 | 2.05 | 75.7 | 0.70 | – |
-| DBSCAN | 21 | 0.779 (umap10) · 0.325 (pca50) | 0.28 | 15424.7 | 0.88 | 6% |
+| **K-Means** (primary) | 10 | 0.203 | 2.13 | 63.9 | 0.78 | – |
+| Agglomerative (Ward) | 4 | 0.189 | 2.27 | 103.8 | 0.79 | – |
+| Gaussian Mixture | 10 | 0.180 | 2.08 | 58.0 | 0.62 | – |
+| DBSCAN | 13 | 0.483 (umap10) · 0.177 (pca50) | 0.42 | 2404.4 | 0.97 | 5% |
 
 *600 comments. Stability = mean ARI across 10 resamples of 80% of the data.*
-*Embedding the Gemini English gloss instead of the raw comment text: K-Means silhouette 0.266 vs 0.219 (raw).*
+*Embedding the Gemini English gloss instead of the raw comment text: K-Means silhouette 0.203 vs 0.219 (raw).*
 <!-- metrics:end -->
 
 **Why K-Means is the primary view.** It is the most stable of the partitioning methods across resamples and its silhouette is at or near the top. It also gives a small set of balanced needs that a marketer can act on directly. DBSCAN's high silhouette comes from a different space (UMAP-10) and many small, dense groups, so the table also shows its silhouette in PCA-50 for a fair comparison. That makes DBSCAN a strong detector of unusual comments rather than a top-level need map. Ward's hierarchy powers the "split this need" drill-down.
@@ -83,14 +83,16 @@ All four algorithms cluster the same embeddings: K-Means, Ward and GMM in PCA-50
 <!-- clusters:start -->
 | | Need | Share | Comments | Recommended action |
 |---|---|---:|---:|---|
-| C1 | **Plain Price Asks** | 18% | 109 | Put the price in the caption or a pinned comment so these one-word asks are answered up front. |
-| C2 | **Styling and Embroidery Praise** | 18% | 105 | Reuse the praised styling and embroidery details in follow-up posts and captions. |
-| C3 | **Service and Website Complaints** | 16% | 96 | Reply to these complaints and align posted items with website stock and listings. |
-| C4 | **Availability and Sale Questions** | 16% | 95 | Publish stock, store and sale-date details, including international availability, in captions or highlights. |
-| C5 | **Product Code Requests** | 14% | 81 | Add article codes and shop links to posts and reply to DMs quickly. |
-| C6 | **Short Compliments** | 13% | 76 | Like these comments and use the volume as an engagement signal, but do not expect sales questions from them. |
-| C7 | **PP Shorthand Price** | 4% | 21 | Treat 'pp' as a price request and answer with the price in the thread. |
-| C8 | **Single-Letter Price Asks** | 3% | 17 | Include these abbreviations in price-intent detection so they get an automated or quick price reply. |
+| C1 | **General Price Inquiries** | 19% | 115 | Deploy automated response bots to supply pricing instantly in the comments. |
+| C2 | **General Visual Compliments** | 14% | 85 | Engage with these positive comments to boost post visibility and customer affinity. |
+| C3 | **Specific Outfit Inquiries** | 12% | 73 | Provide precise product links and specific outfit details directly in reply to each query. |
+| C4 | **Article Code and Link Requests** | 10% | 63 | Share direct product codes and shopping links prominently in response to inquiries. |
+| C5 | **Service and Sizing Complaints** | 10% | 61 | Escalate these critical complaints immediately to customer care and quality control teams. |
+| C6 | **Detailed Aesthetic Praise** | 10% | 58 | Highlight these detailed reviews in marketing materials to showcase product craftsmanship. |
+| C7 | **Sale and Store Inquiries** | 9% | 52 | Publish clear sale schedules and store inventory updates across all official channels. |
+| C8 | **Website Availability Complaints** | 6% | 38 | Ensure all social media posts are synchronized with live website inventory before publishing. |
+| C9 | **Short Price Requests** | 5% | 28 | Automate instant direct messages supplying exact prices and buy links for short queries. |
+| C10 | **Brief Praise Comments** | 4% | 27 | Respond with quick thank-you emojis to sustain social interaction and algorithm reach. |
 <!-- clusters:end -->
 
 **Benchmark accuracy.** I also built a labelled benchmark with known ground-truth needs (synthetic comments, each generated from one of ten needs) to measure how well each algorithm recovers the true structure:
