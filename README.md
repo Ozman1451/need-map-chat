@@ -6,7 +6,9 @@
   <a href="docs/media/brag.mp4"><img src="docs/media/brag.jpg" alt="Need Map launch video (42 s): 600 Instagram comments become 10 audience needs. Click to play." width="100%"></a>
 </p>
 
-> ▶️ **Launch video (42 s):** [docs/media/brag.mp4](docs/media/brag.mp4)
+> ▶️ **Launch video (42 s):** 
+￼
+[docs/media/brag.mp4](docs/media/brag.mp4)
 
 <p align="center">
   <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Need Map: chat on the left, a live canvas of clustering charts on the right" width="100%"></a>
