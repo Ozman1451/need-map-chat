@@ -10,11 +10,15 @@
 ￼
 [docs/media/brag.mp4](docs/media/brag.mp4)
 
+https://github.com/user-attachments/assets/2320ffbd-9572-47ed-85dc-94dd55cf08ed
+
 <p align="center">
   <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Need Map: chat on the left, a live canvas of clustering charts on the right" width="100%"></a>
 </p>
 
 > 🎥 **Full demo video (89 s):** [docs/media/demo.mp4](docs/media/demo.mp4). One question becomes a need map, then drill-down, brand filters, unusual comments and the algorithm comparison, all on the real data (600 comments, 7 brands, K-Means k=10).
+
+https://github.com/user-attachments/assets/88369807-218a-460b-b423-82d2bd8cce33
 
 I built Need Map for the clustering module of my Big Data course. A marketer types a question in plain English or Roman Urdu. An agent picks the right clustering tool, and a live canvas fills with the needs behind thousands of comments: price asks, product-code requests, availability questions, styling praise and service complaints, each with a recommended action.
 
