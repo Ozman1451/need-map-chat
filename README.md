@@ -2,23 +2,9 @@
 
 **Ask "What does my audience want?" and get the answer as charts, clustered from real Instagram comments on Pakistan's biggest fashion brands.**
 
-<p align="center">
-  <a href="docs/media/brag.mp4"><img src="docs/media/brag.jpg" alt="Need Map launch video (42 s): 600 Instagram comments become 10 audience needs. Click to play." width="100%"></a>
-</p>
-
-> ▶️ **Launch video (42 s):** 
-￼
-[docs/media/brag.mp4](docs/media/brag.mp4)
+## ▶️ Launch video (42 s)
 
 https://github.com/user-attachments/assets/2320ffbd-9572-47ed-85dc-94dd55cf08ed
-
-<p align="center">
-  <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Need Map: chat on the left, a live canvas of clustering charts on the right" width="100%"></a>
-</p>
-
-> 🎥 **Full demo video (89 s):** [docs/media/demo.mp4](docs/media/demo.mp4). One question becomes a need map, then drill-down, brand filters, unusual comments and the algorithm comparison, all on the real data (600 comments, 7 brands, K-Means k=10).
-
-https://github.com/user-attachments/assets/88369807-218a-460b-b423-82d2bd8cce33
 
 I built Need Map for the clustering module of my Big Data course. A marketer types a question in plain English or Roman Urdu. An agent picks the right clustering tool, and a live canvas fills with the needs behind thousands of comments: price asks, product-code requests, availability questions, styling praise and service complaints, each with a recommended action.
 
@@ -37,10 +23,6 @@ Every number on screen comes from a Python tool running over cached clustering r
 | *Which clustering algorithm fits best?* | Metrics table, silhouette-vs-k curves, stability | Silhouette, Davies–Bouldin, Calinski–Harabasz, bootstrap ARI |
 
 The top bar adds one-click filters for brand, campaign and algorithm, a Real/Benchmark dataset switch, and a **Demo** button that plays all five questions in sequence.
-
-| Need map | Drill-down | Algorithm comparison |
-|---|---|---|
-| ![Need map and named needs](docs/media/screen-overview.png) | ![Sunburst of sub-needs](docs/media/screen-drilldown.png) | ![Metrics table and silhouette curves](docs/media/screen-metrics.png) |
 
 ## How it works
 
@@ -183,8 +165,6 @@ The first pipeline run downloads `multilingual-e5-base` (about 1 GB) once into `
 **Offline mode (no API key needed):** `MOCK_LLM=1` swaps every Gemini call for a deterministic local stand-in, and `MOCK_CHAT=1` does the same for the chat agent only. For example, `MOCK_CHAT=1 make dev` explores the shipped artifacts with no key, and `MOCK_LLM=1 make pipeline` runs the whole pipeline offline.
 
 Model names come from the environment: `GEMINI_CHAT_MODEL` (default `gemini-3.5-flash-lite`) and `GEMINI_BATCH_MODEL`.
-
-**Re-recording the demo:** with `make dev` running, `cd frontend && node scripts/record-demo.ts main` drives system Chrome through the script and saves frames plus a timeline to `docs/media/raw/main/` (`--captions` renders the caption pills). Then `python scripts/demo_video.py` cuts the waiting time and writes `docs/media/demo.mp4` and `demo.gif`. It uses six chat turns.
 
 ## Future work
 
